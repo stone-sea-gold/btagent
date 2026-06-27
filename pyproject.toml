@@ -1,0 +1,51 @@
+[project]
+name = "aifund5"
+version = "0.1.0"
+description = "A股量化投资助手 - Agent-native 自然语言回测系统"
+requires-python = ">=3.10"
+dependencies = [
+    # Core
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "structlog>=24.0",
+
+    # LLM
+    "anthropic>=0.40.0",
+
+    # Agent
+    "langgraph>=0.2.0",
+    "langchain-anthropic>=0.3.0",
+
+    # Quant
+    "qlib>=0.9.0",
+
+    # Storage
+    "chromadb>=0.5.0",
+
+    # API (Phase 1b)
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

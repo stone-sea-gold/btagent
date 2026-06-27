@@ -1,0 +1,53 @@
+# Environment
+.env
+.venv/
+venv/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project runtime
+strategies/
+factors/custom/
+*.db
+*.sqlite
+*.sqlite3
+
+# Qlib data
+qlib_data/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ChromaDB
+chroma_db/
+
+# Test cache
+.pytest_cache/
+
+# Runtime data
+data/
+
+# Planning docs (not tracked in git)
+PHASE2_PLAN.md
+Agentic UI 架构指南.md
+技术栈推荐清单.md
