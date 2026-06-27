@@ -17,6 +17,9 @@ from src.core.backtest_engine import BacktestEngine
 from src.core.factor_store import FactorStore
 from src.core.session_store import SessionStore
 from src.core.strategy_compiler import StrategyCompiler
+from src.core.position_manager import PositionManager
+from src.core.param_optimizer import ParamOptimizer
+from src.core.stock_selector import StockSelector
 from src.exceptions import AIFundError
 from src.logging import configure_logging, get_logger
 from src.tools.storage_tools import StrategyStore
@@ -48,11 +51,18 @@ def run_cli(session_id: str | None = None):
     # Initialize components
     print("正在初始化 AIFUND5...")
     factor_store = FactorStore()
-    factor_store.load_builtin_factors()
+    factor_store.load_builtin_factors(force_update=True)
     strategy_compiler = StrategyCompiler(factor_store=factor_store)
     backtest_engine = BacktestEngine()
     strategy_store = StrategyStore()
     session_store = SessionStore()
+    position_manager = PositionManager()
+    param_optimizer = ParamOptimizer(
+        strategy_compiler=strategy_compiler,
+        backtest_engine=backtest_engine,
+        strategy_store=strategy_store,
+    )
+    stock_selector = StockSelector(factor_store=factor_store)
 
     # Session management
     if session_id:
@@ -83,6 +93,9 @@ def run_cli(session_id: str | None = None):
         backtest_engine=backtest_engine,
         strategy_store=strategy_store,
         session_store=session_store,
+        position_manager=position_manager,
+        param_optimizer=param_optimizer,
+        stock_selector=stock_selector,
     )
 
     print(f"\n{'='*60}")

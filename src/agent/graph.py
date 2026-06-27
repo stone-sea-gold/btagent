@@ -33,6 +33,27 @@ from src.tools.storage_tools import (
     search_strategies,
 )
 from src.tools.strategy_tools import compose_strategy
+from src.tools.selection_tools import select_stocks as _select_stocks_fn
+from src.tools.position_tools import (
+    save_holdings as _save_holdings_fn,
+    get_portfolio_status as _get_portfolio_status_fn,
+    save_position_rules as _save_position_rules_fn,
+)
+from src.tools.optimize_tools import optimize_parameters as _optimize_parameters_fn
+from src.tools.stoploss_tools import (
+    add_stoploss_rules as _add_stoploss_rules_fn,
+    run_backtest_with_stoploss as _run_backtest_with_stoploss_fn,
+    check_stoploss_scenarios as _check_stoploss_scenarios_fn,
+)
+from src.core.position_manager import PositionManager
+from src.core.param_optimizer import ParamOptimizer
+from src.core.stock_selector import StockSelector
+from src.tools.calendar_tools import (
+    get_current_date as _get_current_date_fn,
+    resolve_relative_date as _resolve_relative_date_fn,
+    get_trading_days as _get_trading_days_fn,
+)
+from src.tools.data_tools import check_data_coverage as _check_data_coverage_fn
 
 logger = get_logger("agent_graph")
 
@@ -43,6 +64,9 @@ def create_agent_graph(
     backtest_engine: BacktestEngine,
     strategy_store: StrategyStore,
     session_store: SessionStore,
+    position_manager: PositionManager = None,
+    param_optimizer: ParamOptimizer = None,
+    stock_selector: StockSelector = None,
 ) -> StateGraph:
     """Create the LangGraph agent graph.
 
@@ -172,6 +196,98 @@ def create_agent_graph(
         chain = strategy_store.get_version_chain(strategy_id)
         return json.dumps(chain, ensure_ascii=False, indent=2)
 
+    # ── Phase 3 tool functions ────────────────────────────────────
+
+    def _select_stocks(
+        name: str, factor_ids: str, top_k: int = 50,
+        factor_weights_json: str = "", filter_conditions_json: str = "",
+        universe: str = "csi300", date: str = "",
+    ) -> str:
+        """Run stock selection pipeline."""
+        import json
+        result = _select_stocks_fn(
+            name=name, factor_ids=factor_ids, top_k=top_k,
+            factor_weights_json=factor_weights_json,
+            filter_conditions_json=filter_conditions_json,
+            universe=universe, date=date, selector=stock_selector,
+        )
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    def _save_holdings(session_id: str, holdings_json: str) -> str:
+        """Save portfolio holdings."""
+        import json
+        result = _save_holdings_fn(session_id, holdings_json, position_manager)
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    def _get_portfolio_status(session_id: str) -> str:
+        """Get portfolio status and check rule violations."""
+        import json
+        result = _get_portfolio_status_fn(session_id, position_manager)
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    def _save_position_rules(session_id: str, rules_json: str) -> str:
+        """Save position management rules."""
+        import json
+        result = _save_position_rules_fn(session_id, rules_json, position_manager)
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    def _optimize_parameters(
+        strategy_id: str, method: str = "bayesian",
+        param_ranges_json: str = "", metric: str = "sharpe_ratio",
+        n_trials: int = 50, start_date: str = "", end_date: str = "",
+    ) -> str:
+        """Run parameter optimization."""
+        import json
+        result = _optimize_parameters_fn(
+            strategy_id=strategy_id, method=method,
+            param_ranges_json=param_ranges_json, metric=metric,
+            n_trials=n_trials, start_date=start_date, end_date=end_date,
+            optimizer=param_optimizer,
+        )
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    def _add_stoploss_rules(strategy_config_json: str, rules_json: str) -> str:
+        """Add stop-loss rules to a strategy config."""
+        import json
+        result = _add_stoploss_rules_fn(strategy_config_json, rules_json)
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    def _run_backtest_with_stoploss(strategy_config_json: str, stoploss_rules_json: str) -> str:
+        """Run backtest with stop-loss rules."""
+        import json
+        result = _run_backtest_with_stoploss_fn(
+            strategy_config_json, stoploss_rules_json,
+            compiler=strategy_compiler, engine=backtest_engine,
+        )
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    def _check_stoploss_scenarios(strategy_config_json: str, stoploss_rules_json: str) -> str:
+        """Analyze stop-loss trigger scenarios."""
+        import json
+        result = _check_stoploss_scenarios_fn(
+            strategy_config_json, stoploss_rules_json,
+            compiler=strategy_compiler, engine=backtest_engine,
+        )
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    # ── Calendar tool functions ───────────────────────────────────
+
+    def _get_current_date() -> str:
+        """Get today's date and the latest trading day."""
+        return _get_current_date_fn()
+
+    def _resolve_relative_date(expression: str, reference_date: str = "") -> str:
+        """Resolve a relative date expression to absolute date(s)."""
+        return _resolve_relative_date_fn(expression, reference_date)
+
+    def _get_trading_days(start_date: str, end_date: str) -> str:
+        """Get all trading days in a date range."""
+        return _get_trading_days_fn(start_date, end_date)
+
+    def _check_data_coverage() -> str:
+        """Check Qlib data coverage and freshness."""
+        return _check_data_coverage_fn()
+
     # ── Bind tools ─────────────────────────────────────────────────
 
     tools = [
@@ -187,6 +303,18 @@ def create_agent_graph(
         _compare_strategies,
         _update_strategy,
         _get_version_chain,
+        _select_stocks,
+        _save_holdings,
+        _get_portfolio_status,
+        _save_position_rules,
+        _optimize_parameters,
+        _add_stoploss_rules,
+        _run_backtest_with_stoploss,
+        _check_stoploss_scenarios,
+        _get_current_date,
+        _resolve_relative_date,
+        _get_trading_days,
+        _check_data_coverage,
     ]
 
     # Create LLM via factory
@@ -246,6 +374,18 @@ def create_agent_graph(
             "_compare_strategies": _compare_strategies,
             "_update_strategy": _update_strategy,
             "_get_version_chain": _get_version_chain,
+            "_select_stocks": _select_stocks,
+            "_save_holdings": _save_holdings,
+            "_get_portfolio_status": _get_portfolio_status,
+            "_save_position_rules": _save_position_rules,
+            "_optimize_parameters": _optimize_parameters,
+            "_add_stoploss_rules": _add_stoploss_rules,
+            "_run_backtest_with_stoploss": _run_backtest_with_stoploss,
+            "_check_stoploss_scenarios": _check_stoploss_scenarios,
+            "_get_current_date": _get_current_date,
+            "_resolve_relative_date": _resolve_relative_date,
+            "_get_trading_days": _get_trading_days,
+            "_check_data_coverage": _check_data_coverage,
         }
 
         results = []

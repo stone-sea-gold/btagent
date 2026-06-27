@@ -5,6 +5,8 @@ Tests cover:
 - Parse results (metrics, equity curve)
 - Idempotency (same inputs return cached result)
 - Error handling (invalid dates, empty strategy)
+
+Note: These tests require real Qlib data and will be skipped if not available.
 """
 
 import pytest
@@ -17,8 +19,26 @@ from src.core.models import (
     StrategyConfig,
     WeightScheme,
 )
+from src.exceptions import BacktestError
 
 
+def _qlib_data_available():
+    """Check if Qlib data is available for testing."""
+    try:
+        from src.data.qlib_setup import check_qlib_data
+        info = check_qlib_data()
+        return info.get("exists", False)
+    except Exception:
+        return False
+
+
+requires_qlib = pytest.mark.skipif(
+    not _qlib_data_available(),
+    reason="Qlib data not available — run `python cli.py --init-data` first"
+)
+
+
+@requires_qlib
 class TestBacktestEngine:
     """Test backtest execution and result parsing."""
 

@@ -69,3 +69,27 @@ class SessionError(AIFundError):
 
 class SessionNotFoundError(SessionError):
     """Requested session does not exist."""
+
+
+class SelectionError(AIFundError):
+    """Errors related to stock selection."""
+
+
+class SelectionFactorError(SelectionError):
+    """Factor used in selection is invalid or not found."""
+
+
+class PositionError(AIFundError):
+    """Errors related to position management."""
+
+
+class PositionViolationError(PositionError):
+    """Position rule violation detected."""
+
+
+class OptimizationError(AIFundError):
+    """Errors related to parameter optimization."""
+
+
+class StopLossError(AIFundError):
+    """Errors related to stop-loss operations."""

@@ -212,8 +212,12 @@ class FactorStore:
 
     # ── Builtin Factors ────────────────────────────────────────────
 
-    def load_builtin_factors(self) -> int:
-        """Load built-in factors from JSON file. Returns count loaded."""
+    def load_builtin_factors(self, force_update: bool = False) -> int:
+        """Load built-in factors from JSON file. Returns count loaded.
+
+        Args:
+            force_update: If True, update existing builtin factors with new formulas.
+        """
         builtin_path = Path(settings.factors_builtin_dir) / "factors.json"
         if not builtin_path.exists():
             logger.warning("builtin_factors_not_found", path=str(builtin_path))
@@ -225,16 +229,36 @@ class FactorStore:
         loaded = 0
         for data in factors_data:
             try:
-                # Skip if already exists
-                self._conn.execute(
-                    "SELECT id FROM factors WHERE id = ?", (data["id"],)
+                # Check if already exists
+                existing = self._conn.execute(
+                    "SELECT id, formula FROM factors WHERE id = ?", (data["id"],)
                 ).fetchone()
-                if self._conn.execute(
-                    "SELECT id FROM factors WHERE id = ?", (data["id"],)
-                ).fetchone():
+
+                if existing:
+                    if force_update and existing["formula"] != data["formula"]:
+                        # Update formula and parameters (including source)
+                        params = data.get("parameters", {})
+                        if "source" in data:
+                            params["source"] = data["source"]
+                        self._conn.execute(
+                            "UPDATE factors SET formula = ?, name = ?, description = ?, parameters = ? WHERE id = ?",
+                            (data["formula"], data["name"], data["description"], json.dumps(params, ensure_ascii=False), data["id"]),
+                        )
+                        # Update vector DB
+                        doc_text = f"{data['name']} {data['description']} {' '.join(data.get('tags', []))}"
+                        self._collection.upsert(
+                            ids=[data["id"]],
+                            documents=[doc_text],
+                            metadatas=[{"category": data["category"], "tags": ",".join(data.get("tags", []))}],
+                        )
+                        loaded += 1
                     continue
 
                 now = datetime.now().isoformat()
+                # Include source in parameters for metadata tracking
+                params = data.get("parameters", {})
+                if "source" in data:
+                    params["source"] = data["source"]
                 self._conn.execute(
                     """INSERT INTO factors (id, name, description, category, formula, parameters, tags, is_builtin, created_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)""",
@@ -244,7 +268,7 @@ class FactorStore:
                         data["description"],
                         data["category"],
                         data["formula"],
-                        json.dumps(data.get("parameters", {}), ensure_ascii=False),
+                        json.dumps(params, ensure_ascii=False),
                         json.dumps(data.get("tags", []), ensure_ascii=False),
                         now,
                     ),

@@ -214,9 +214,11 @@ class BacktestEngine:
             )
 
         except ImportError as e:
-            # If Qlib components not available, return mock result for development
-            logger.warning("qlib_import_fallback", error=str(e))
-            return self._generate_mock_result(strategy_id, start_date, end_date)
+            logger.error("qlib_not_available", error=str(e))
+            raise BacktestError(
+                "Qlib 未安装或数据不可用。请运行 `python cli.py --init-data` 初始化数据。",
+                details={"error": str(e)},
+            ) from e
 
     def _parse_metrics(self, report) -> BacktestMetrics:
         """Parse Qlib backtest report into BacktestMetrics."""
@@ -274,35 +276,6 @@ class BacktestEngine:
         except Exception as e:
             logger.warning("equity_curve_parse_error", error=str(e))
         return []
-
-    def _generate_mock_result(self, strategy_id, start_date, end_date) -> BacktestResult:
-        """Generate mock backtest result for development/testing."""
-        import random
-        random.seed(hash(strategy_id))
-
-        total_return = random.uniform(-0.2, 0.5)
-        sharpe = random.uniform(-1, 2.5)
-        max_dd = random.uniform(-0.3, -0.05)
-
-        return BacktestResult(
-            id=f"bt_{strategy_id}_{start_date}_{end_date}",
-            strategy_id=strategy_id,
-            metrics=BacktestMetrics(
-                total_return=round(total_return, 4),
-                annualized_return=round(total_return * 0.8, 4),
-                sharpe_ratio=round(sharpe, 4),
-                max_drawdown=round(max_dd, 4),
-                max_drawdown_duration=random.randint(10, 100),
-                volatility=round(random.uniform(0.1, 0.4), 4),
-                win_rate=round(random.uniform(0.4, 0.6), 4),
-                turnover=round(random.uniform(0.1, 0.5), 4),
-            ),
-            equity_curve=[
-                {"date": "2023-01-01", "value": 1.0},
-                {"date": "2023-12-31", "value": round(1 + total_return, 4)},
-            ],
-            is_cached=False,
-        )
 
     def _compute_cache_key(self, strategy_id, compiled_strategy, start_date, end_date) -> str:
         """Compute a deterministic cache key."""

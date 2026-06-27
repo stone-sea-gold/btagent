@@ -194,3 +194,205 @@ class SessionState(BaseModel):
     decision_log: list[ToolCallRecord] = Field(default_factory=list)
     conversation_history: list[dict] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.now)
+
+
+# ── Stock Selection Models ────────────────────────────────────────
+
+
+class FilterOperator(str, Enum):
+    """Filter comparison operators."""
+    LT = "lt"
+    LE = "le"
+    GT = "gt"
+    GE = "ge"
+    EQ = "eq"
+    BETWEEN = "between"
+
+
+class ScoreStageConfig(BaseModel):
+    """First stage: score and rank stocks by weighted factors."""
+    factor_ids: list[str] = Field(min_length=1)
+    factor_weights: dict[str, float] = Field(default_factory=dict)
+    top_k: int = Field(default=50, ge=1, le=500)
+
+
+class FilterCondition(BaseModel):
+    """A single filter condition."""
+    factor_id: str
+    operator: FilterOperator
+    value: float | None = None
+    value_min: float | None = None
+    value_max: float | None = None
+
+
+class FilterStageConfig(BaseModel):
+    """Second stage: filter stocks by conditions."""
+    conditions: list[FilterCondition] = Field(min_length=1)
+
+
+class StockSelectionConfig(BaseModel):
+    """Full stock selection pipeline configuration."""
+    name: str = Field(description="Selection name")
+    universe: str = Field(default="csi300")
+    score_stage: ScoreStageConfig
+    filter_stages: list[FilterStageConfig] = Field(default_factory=list)
+    date: str = Field(description="Evaluation date (YYYY-MM-DD)")
+
+
+class SelectedStock(BaseModel):
+    """A single stock in the selection result."""
+    code: str
+    name: str = ""
+    composite_score: float
+    factor_scores: dict[str, float] = Field(default_factory=dict)
+
+
+class StockSelectionResult(BaseModel):
+    """Stock selection result."""
+    id: str
+    config_name: str
+    universe: str
+    date: str
+    total_scored: int
+    total_selected: int
+    stocks: list[SelectedStock]
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+# ── Position Management Models ────────────────────────────────────
+
+
+class HoldingRecord(BaseModel):
+    """A single stock holding."""
+    stock_code: str
+    stock_name: str = ""
+    quantity: int = Field(ge=0)
+    cost_price: float = Field(gt=0)
+    current_price: float = Field(gt=0)
+    market_value: float = Field(ge=0)
+    pnl: float = 0.0
+    pnl_pct: float = 0.0
+    industry: str = ""
+    weight: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class RuleType(str, Enum):
+    """Position management rule types."""
+    SINGLE_STOCK_LIMIT = "single_stock_limit"
+    TOTAL_POSITION_LIMIT = "total_position_limit"
+    INDUSTRY_LIMIT = "industry_limit"  # reserved for future
+
+
+class PositionRule(BaseModel):
+    """A position management rule."""
+    rule_type: RuleType
+    max_weight: float = Field(gt=0.0, le=1.0, description="Max weight as fraction (e.g., 0.1 = 10%)")
+    scope: str = Field(default="", description="Industry name for industry_limit, empty otherwise")
+
+
+class PositionViolation(BaseModel):
+    """A rule violation detected in the portfolio."""
+    rule_type: RuleType
+    stock_code: str = ""
+    industry: str = ""
+    current_weight: float
+    max_weight: float
+    excess: float = Field(description="How much over the limit")
+    message: str
+
+
+# ── Parameter Optimization Models ─────────────────────────────────
+
+
+class OptunaSearchMethod(str, Enum):
+    """Parameter optimization search methods."""
+    GRID = "grid"
+    BAYESIAN = "bayesian"
+
+
+class ParamRange(BaseModel):
+    """A single parameter search range."""
+    name: str = Field(description="Parameter path, e.g. 'selection_params.k'")
+    low: float
+    high: float
+    step: float | None = Field(default=None, description="Step size for grid search")
+    is_int: bool = Field(default=False, description="Round to integer")
+
+
+class OptimizationConfig(BaseModel):
+    """Parameter optimization configuration."""
+    strategy_id: str = Field(description="Base strategy to optimize")
+    method: OptunaSearchMethod
+    param_ranges: list[ParamRange] = Field(min_length=1, max_length=10)
+    metric: str = Field(default="sharpe_ratio", description="Metric to maximize")
+    n_trials: int = Field(default=50, ge=5, le=500)
+    start_date: str
+    end_date: str
+    overfit_warning_shown: bool = Field(default=False)
+
+
+class OptimizationTrial(BaseModel):
+    """Result of a single optimization trial."""
+    trial_id: int
+    params: dict[str, float]
+    metric_value: float
+    strategy_id: str = ""
+    backtest_id: str = ""
+
+
+class OptimizationResult(BaseModel):
+    """Complete optimization result."""
+    id: str
+    config: OptimizationConfig
+    best_params: dict[str, float]
+    best_metric: float
+    best_strategy_id: str
+    trials: list[OptimizationTrial]
+    total_trials: int
+    overfit_warning: str = ""
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+# ── Stop-Loss Models ──────────────────────────────────────────────
+
+
+class StopLossType(str, Enum):
+    """Stop-loss rule types."""
+    FIXED = "fixed"
+    TRAILING = "trailing"
+    MAX_DRAWDOWN = "max_drawdown"
+
+
+class StopLossRule(BaseModel):
+    """A stop-loss rule configuration."""
+    rule_type: StopLossType
+    threshold: float = Field(description="Percentage threshold (e.g., 0.08 = 8%)")
+    scope: str = Field(default="portfolio", description="'portfolio' or stock_code")
+
+
+class StopLossEvent(BaseModel):
+    """Record of a stop-loss trigger."""
+    rule_type: StopLossType
+    stock_code: str = ""
+    trigger_date: str
+    trigger_price: float = 0.0
+    peak_price: float = 0.0
+    loss_pct: float
+    action_taken: str = Field(description="e.g. 'sold 600519' or 'portfolio closed'")
+
+
+# ── Multi-Market Placeholder ──────────────────────────────────────
+
+
+class MarketType(str, Enum):
+    """Supported market types."""
+    A_SHARE = "a_share"
+    # Future: HK = "hk", US = "us"
+
+
+class MarketConfig(BaseModel):
+    """Market-specific configuration (placeholder for multi-market)."""
+    market: MarketType = Field(default=MarketType.A_SHARE)
+    exchange: str = Field(default="SSE")
+    currency: str = Field(default="CNY")
+    trading_calendar: str = Field(default="china")

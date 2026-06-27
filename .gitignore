@@ -51,3 +51,8 @@ data/
 PHASE2_PLAN.md
 Agentic UI 架构指南.md
 技术栈推荐清单.md
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
