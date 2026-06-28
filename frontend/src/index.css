@@ -54,18 +54,109 @@ body {
   background: var(--bg-hover);
 }
 
-/* CopilotKit dark theme overrides */
+/* CopilotKit dark theme overrides — force our accent color and match app theme */
+
+/* Set CSS variables on sidebar scope */
 .copilotKitSidebar {
-  background-color: var(--bg-secondary) !important;
-  border-color: var(--border) !important;
+  --copilot-kit-primary-color: #3b82f6;
+  --copilot-kit-contrast-color: #ffffff;
+  --copilot-kit-background-color: #1a1b23;
+  --copilot-kit-input-background-color: #252630;
+  --copilot-kit-secondary-color: #1a1b23;
+  --copilot-kit-secondary-contrast-color: #e5e7eb;
+  --copilot-kit-separator-color: #2e303a;
+  --copilot-kit-muted-color: #6b7280;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-.copilotKitMessages {
-  background-color: var(--bg-primary) !important;
+/* Header */
+.copilotKitSidebar .copilotKitHeader {
+  background-color: #1a1b23;
+  border-bottom: 1px solid #2e303a;
+  color: #e5e7eb;
 }
 
-.copilotKitInput {
-  background-color: var(--bg-tertiary) !important;
-  border-color: var(--border) !important;
-  color: var(--text-primary) !important;
+.copilotKitSidebar .copilotKitHeader > button {
+  color: #9ca3af;
+}
+
+.copilotKitSidebar .copilotKitHeader > button:hover {
+  color: #e5e7eb;
+  background-color: #252630;
+}
+
+/* Message area */
+.copilotKitSidebar .copilotKitMessages {
+  background-color: #0f1117;
+}
+
+/* User message bubble */
+.copilotKitSidebar .copilotKitUserMessage {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+/* Assistant message */
+.copilotKitSidebar .copilotKitAssistantMessage {
+  color: #e5e7eb;
+}
+
+/* Input area */
+.copilotKitSidebar .copilotKitInput {
+  background-color: #252630;
+  border-color: #2e303a;
+  color: #e5e7eb;
+}
+
+.copilotKitSidebar .copilotKitInput > textarea {
+  color: #e5e7eb;
+}
+
+.copilotKitSidebar .copilotKitInput > textarea::placeholder {
+  color: #6b7280;
+}
+
+/* Send button */
+.copilotKitSidebar .copilotKitInputControlButton:not([disabled]) {
+  color: #3b82f6;
+}
+
+/* Input container */
+.copilotKitSidebar .copilotKitInputContainer {
+  background-color: #1a1b23;
+}
+
+/* Suggestions */
+.copilotKitSidebar .suggestions .suggestion {
+  border-color: #2e303a;
+  color: #e5e7eb;
+}
+
+.copilotKitSidebar .suggestions .suggestion:hover {
+  background-color: #252630;
+}
+
+/* Powered by text */
+.copilotKitSidebar .poweredBy {
+  color: #6b7280 !important;
+  background: #1a1b23 !important;
+}
+
+/* Floating toggle button — rendered OUTSIDE sidebar, so no .copilotKitSidebar scope */
+.copilotKitButton {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.copilotKitButton:hover {
+  background-color: #2563eb;
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
+}
+
+/* Window (popup mode) */
+.copilotKitWindow {
+  background-color: #1a1b23;
+  border-color: #2e303a;
 }

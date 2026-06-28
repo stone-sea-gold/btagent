@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useCopilotReadable } from '@copilotkit/react-core'
 
 interface Strategy {
   strategy_id: string
@@ -12,6 +13,18 @@ interface Strategy {
 export default function StrategiesPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Share strategy list with the Agent
+  useCopilotReadable({
+    description: '当前已保存的策略列表',
+    value: strategies.map((s) => ({
+      id: s.strategy_id,
+      name: s.name,
+      version: s.version,
+      description: s.description,
+    })),
+  })
 
   useEffect(() => {
     fetchStrategies()
@@ -19,12 +32,18 @@ export default function StrategiesPage() {
 
   const fetchStrategies = async () => {
     setLoading(true)
+    setError(null)
     try {
-      const res = await fetch('/api/strategies?limit=50')
+      const res = await fetch('/api/strategies/?limit=50')
+      if (!res.ok) {
+        throw new Error(`请求失败: ${res.status}`)
+      }
       const data = await res.json()
       setStrategies(data.strategies || [])
     } catch (err) {
+      const message = err instanceof Error ? err.message : '未知错误'
       console.error('Failed to fetch strategies:', err)
+      setError(`加载策略失败: ${message}`)
     } finally {
       setLoading(false)
     }
@@ -35,6 +54,25 @@ export default function StrategiesPage() {
       <h1 className="text-2xl font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
         策略管理
       </h1>
+
+      {error && (
+        <div
+          className="mb-4 px-4 py-3 rounded-lg flex items-center justify-between"
+          style={{
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid var(--danger)',
+          }}
+        >
+          <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>
+          <button
+            onClick={fetchStrategies}
+            className="text-xs underline ml-4"
+            style={{ color: 'var(--danger)' }}
+          >
+            重试
+          </button>
+        </div>
+      )}
 
       <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
         共 {strategies.length} 个策略

@@ -12,6 +12,7 @@ from pathlib import Path
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.memory import MemorySaver
 
 from src.agent.state import AgentState
 from src.config import settings
@@ -67,7 +68,10 @@ def create_agent_graph(
     position_manager: PositionManager = None,
     param_optimizer: ParamOptimizer = None,
     stock_selector: StockSelector = None,
+    checkpointer=None,
 ) -> StateGraph:
+    if checkpointer is None:
+        checkpointer = MemorySaver()
     """Create the LangGraph agent graph.
 
     Returns:
@@ -424,7 +428,7 @@ def create_agent_graph(
     graph.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
     graph.add_edge("tools", "agent")
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
 
 def create_session(session_store: SessionStore | None = None) -> str:

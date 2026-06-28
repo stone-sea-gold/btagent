@@ -1,13 +1,27 @@
 import { useState, useEffect } from 'react'
+import { useCopilotReadable } from '@copilotkit/react-core'
 
 export default function SettingsPage() {
   const [coverage, setCoverage] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // Share settings context with the Agent
+  useCopilotReadable({
+    description: '当前设置页面的数据状态',
+    value: coverage || { status: '未加载' },
+  })
 
   useEffect(() => {
     fetch('/api/data/coverage')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`请求失败: ${res.status}`)
+        return res.json()
+      })
       .then(setCoverage)
-      .catch(console.error)
+      .catch((err) => {
+        console.error('Failed to fetch coverage:', err)
+        setError('加载数据状态失败')
+      })
   }, [])
 
   return (
@@ -22,7 +36,9 @@ export default function SettingsPage() {
           <h2 className="text-lg font-medium mb-3" style={{ color: 'var(--text-primary)' }}>
             数据状态
           </h2>
-          {coverage ? (
+          {error ? (
+            <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>
+          ) : coverage ? (
             <div className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
               <p>数据起始日期: {coverage.data_start_date || '未知'}</p>
               <p>数据截止日期: {coverage.data_end_date || '未知'}</p>

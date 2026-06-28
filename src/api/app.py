@@ -38,7 +38,7 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -67,11 +67,15 @@ app.include_router(data.router, prefix="/api/data", tags=["data"])
 
 
 # Register CopilotKit AG-UI endpoint
+from fastapi import Request  # noqa: E402
+from copilotkit.integrations.fastapi import handler as _copilotkit_handler  # noqa: E402
 from src.api.routes.chat import get_copilotkit_endpoint  # noqa: E402
 
 
-@app.post("/api/chat")
-async def copilotkit_chat(request: dict):
-    """CopilotKit AG-UI chat endpoint."""
-    endpoint = get_copilotkit_endpoint()
-    return await endpoint.handle_request(request)
+# Handle bare /api/chat (info endpoint) and /api/chat/agent/name (execution)
+@app.api_route("/api/chat", methods=["GET", "POST", "OPTIONS"])
+@app.api_route("/api/chat/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+async def copilotkit_chat(request: Request, path: str = ""):
+    """CopilotKit AG-UI endpoint."""
+    request.path_params["path"] = path
+    return await _copilotkit_handler(request, get_copilotkit_endpoint())
