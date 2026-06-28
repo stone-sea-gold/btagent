@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useCopilotReadable } from '@copilotkit/react-core'
 
 interface Factor {
   id: string
@@ -16,17 +15,6 @@ export default function FactorsPage() {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  // Share factor list with the Agent
-  useCopilotReadable({
-    description: '当前因子库中的因子列表（前20个）',
-    value: factors.slice(0, 20).map((f) => ({
-      id: f.id,
-      name: f.name,
-      category: f.category,
-      source: f.source,
-    })),
-  })
 
   useEffect(() => {
     fetchFactors()

@@ -9,6 +9,7 @@ from src.core.factor_store import FactorStore
 from src.core.param_optimizer import ParamOptimizer
 from src.core.position_manager import PositionManager
 from src.core.session_store import SessionStore
+from src.core.settings_store import SettingsStore
 from src.core.stock_selector import StockSelector
 from src.core.strategy_compiler import StrategyCompiler
 from src.tools.storage_tools import StrategyStore
@@ -31,6 +32,7 @@ class ServiceContainer:
             strategy_store=self.strategy_store,
         )
         self.stock_selector = StockSelector(factor_store=self.factor_store)
+        self.settings_store = SettingsStore()
 
     def close(self):
         """Clean up resources."""
@@ -39,6 +41,7 @@ class ServiceContainer:
         self.strategy_store.close()
         self.session_store.close()
         self.position_manager.close()
+        self.settings_store.close()
 
 
 # Global singleton — initialized in app.py lifespan

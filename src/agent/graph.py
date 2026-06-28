@@ -12,7 +12,6 @@ from pathlib import Path
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
-from langgraph.checkpoint.memory import MemorySaver
 
 from src.agent.state import AgentState
 from src.config import settings
@@ -70,8 +69,6 @@ def create_agent_graph(
     stock_selector: StockSelector = None,
     checkpointer=None,
 ) -> StateGraph:
-    if checkpointer is None:
-        checkpointer = MemorySaver()
     """Create the LangGraph agent graph.
 
     Returns:
@@ -321,24 +318,37 @@ def create_agent_graph(
         _check_data_coverage,
     ]
 
-    # Create LLM via factory
-    llm = create_llm().bind_tools(tools)
-
     # Load system prompt
     prompt_path = Path(__file__).parent / "prompts" / "system.md"
     system_prompt = prompt_path.read_text(encoding="utf-8")
 
     # ── Graph nodes ────────────────────────────────────────────────
 
+    def _get_llm():
+        """Create a fresh LLM every call so DB config overrides take effect immediately."""
+        return create_llm().bind_tools(tools)
+
     def agent_node(state: AgentState) -> dict:
         """Main agent node — calls LLM with tools."""
         messages = state["messages"]
+
+        logger.info("agent_node_debug", msg_count=len(messages), msg_types=str([type(m).__name__ for m in messages[:3]]))
 
         if not messages or not isinstance(messages[0], SystemMessage):
             messages = [SystemMessage(content=system_prompt)] + messages
 
         try:
-            response = llm.invoke(messages)
+            response = _get_llm().invoke(messages)
+            # Normalize content: if the LLM returns content blocks (list)
+            # instead of a plain string, extract just the text portions.
+            if isinstance(response.content, list):
+                texts = []
+                for block in response.content:
+                    if isinstance(block, dict):
+                        texts.append(block.get("text") or block.get("thinking") or "")
+                    else:
+                        texts.append(str(block))
+                response.content = "\n".join(t for t in texts if t)
             logger.info(
                 "agent_llm_response",
                 has_tool_calls=bool(response.tool_calls),
@@ -347,7 +357,24 @@ def create_agent_graph(
             return {"messages": [response]}
         except Exception as e:
             logger.error("agent_llm_error", error=str(e))
-            raise LLMError(f"Agent LLM call failed: {e}") from e
+            msg = str(e)
+            if "401" in msg or "unauthorized" in msg.lower() or "api_key" in msg.lower():
+                hint = "API Key 无效或未设置，请前往设置页面检查 LLM 配置。"
+            elif "402" in msg or "insufficient_quota" in msg or "insufficient balance" in msg.lower():
+                hint = "API 额度不足，请检查账户余额。"
+            elif "403" in msg or "forbidden" in msg.lower():
+                hint = "API 权限不足或被禁止访问。"
+            elif "404" in msg or "not found" in msg.lower():
+                hint = "API 端点或模型名称不存在，请检查 Base URL 和 Model 名称。"
+            elif "timeout" in msg.lower():
+                hint = "请求超时，请检查网络连接或 Base URL 是否正确。"
+            elif "rate" in msg.lower() and "limit" in msg.lower():
+                hint = "请求频率过高，请稍后重试。"
+            elif "at least one message" in msg:
+                hint = "LLM 配置异常，协议检测可能不匹配。请尝试更换 Base URL 格式（OpenAI / Anthropic）。"
+            else:
+                hint = f"LLM 调用失败: {msg[:200]}"
+            raise LLMError(hint) from e
 
     def should_continue(state: AgentState) -> str:
         last_message = state["messages"][-1]

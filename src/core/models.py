@@ -396,3 +396,15 @@ class MarketConfig(BaseModel):
     exchange: str = Field(default="SSE")
     currency: str = Field(default="CNY")
     trading_calendar: str = Field(default="china")
+
+
+# ── LLM Settings Models ────────────────────────────────────────────
+
+
+class LLMConfig(BaseModel):
+    """User-overrideable LLM configuration."""
+    provider: str = Field(default="custom", description="Provider label shown in UI")
+    base_url: str = ""
+    api_key: str = ""
+    model: str = ""
+    is_active: bool = Field(default=True)

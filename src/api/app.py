@@ -55,7 +55,7 @@ async def health():
 
 
 # Register REST route modules
-from src.api.routes import backtest, calendar, data, factors, portfolio, selection, strategies  # noqa: E402
+from src.api.routes import backtest, calendar, data, factors, portfolio, selection, settings, strategies  # noqa: E402
 
 app.include_router(factors.router, prefix="/api/factors", tags=["factors"])
 app.include_router(strategies.router, prefix="/api/strategies", tags=["strategies"])
@@ -64,18 +64,10 @@ app.include_router(selection.router, prefix="/api/selection", tags=["selection"]
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["portfolio"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
 app.include_router(data.router, prefix="/api/data", tags=["data"])
+app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 
 
-# Register CopilotKit AG-UI endpoint
-from fastapi import Request  # noqa: E402
-from copilotkit.integrations.fastapi import handler as _copilotkit_handler  # noqa: E402
-from src.api.routes.chat import get_copilotkit_endpoint  # noqa: E402
+# Register Vercel AI SDK chat SSE endpoint
+from src.api.routes.chat_sse import router as chat_sse_router  # noqa: E402
 
-
-# Handle bare /api/chat (info endpoint) and /api/chat/agent/name (execution)
-@app.api_route("/api/chat", methods=["GET", "POST", "OPTIONS"])
-@app.api_route("/api/chat/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-async def copilotkit_chat(request: Request, path: str = ""):
-    """CopilotKit AG-UI endpoint."""
-    request.path_params["path"] = path
-    return await _copilotkit_handler(request, get_copilotkit_endpoint())
+app.include_router(chat_sse_router, tags=["chat"])

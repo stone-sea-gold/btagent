@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 
 const navItems = [
   { path: '/chat', label: '对话', icon: '💬' },
+  { path: '/history', label: '历史', icon: '📝' },
   { path: '/factors', label: '因子库', icon: '📊' },
   { path: '/strategies', label: '策略', icon: '📋' },
   { path: '/backtest', label: '回测', icon: '📈' },

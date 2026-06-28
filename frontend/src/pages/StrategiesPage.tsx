@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useCopilotReadable } from '@copilotkit/react-core'
 
 interface Strategy {
   strategy_id: string
@@ -14,17 +13,6 @@ export default function StrategiesPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  // Share strategy list with the Agent
-  useCopilotReadable({
-    description: '当前已保存的策略列表',
-    value: strategies.map((s) => ({
-      id: s.strategy_id,
-      name: s.name,
-      version: s.version,
-      description: s.description,
-    })),
-  })
 
   useEffect(() => {
     fetchStrategies()

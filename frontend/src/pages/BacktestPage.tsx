@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useCopilotReadable, useCopilotAction } from '@copilotkit/react-core'
 
 interface BacktestMetrics {
   sharpe_ratio: number
@@ -22,33 +21,6 @@ interface BacktestResult {
 
 export default function BacktestPage() {
   const [backtestData, setBacktestData] = useState<BacktestResult | null>(null)
-
-  // Share current page context with Agent
-  useCopilotReadable({
-    description: '当前页面：回测结果页面。用户可以在这里查看回测的收益曲线、指标和分析。',
-    value: { page: 'backtest', has_result: backtestData !== null },
-  })
-
-  // Let the Agent trigger backtest result display
-  useCopilotAction({
-    name: 'display_backtest_result',
-    description: '在回测结果页面展示回测结果',
-    parameters: [
-      {
-        name: 'result_json',
-        type: 'string',
-        description: '回测结果的 JSON 字符串',
-      },
-    ],
-    handler: ({ result_json }) => {
-      try {
-        const data = JSON.parse(result_json) as BacktestResult
-        setBacktestData(data)
-      } catch {
-        // ignore parse errors
-      }
-    },
-  })
 
   const m = backtestData?.metrics
 

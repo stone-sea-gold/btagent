@@ -1,11 +1,4 @@
-import { useCopilotReadable } from '@copilotkit/react-core'
-
 export default function PortfolioPage() {
-  // Share page context with the Agent
-  useCopilotReadable({
-    description: '当前页面：仓位管理页面。用户可以在这里查看持仓、设置仓位规则。',
-    value: { page: 'portfolio' },
-  })
 
   return (
     <div className="h-full flex flex-col">
