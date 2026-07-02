@@ -1,5 +1,5 @@
 [README.md](https://github.com/user-attachments/files/29435322/README.md)
-# AIFUND5 — A 股量化投资助手
+# btagent — A 股量化投资助手
 
 面向个人投资者的 **Agent-native** 量化投资系统。通过自然语言与 AI Agent 交互，完成因子搜索、策略构建、回测分析、选股筛选、仓位管理等全流程量化投资任务。
 
