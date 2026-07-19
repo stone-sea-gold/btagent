@@ -136,6 +136,30 @@ def check_stoploss_scenarios(
                     "threshold": f"{rule.threshold:.0%}",
                     "description": f"当组合整体回撤超过 {rule.threshold:.0%} 时全部清仓",
                 })
+            elif rule.rule_type == StopLossType.ATR:
+                scenarios.append({
+                    "rule_type": "ATR止损",
+                    "threshold": f"{rule.atr_multiplier}倍ATR",
+                    "description": (
+                        f"当个股价格跌破买入价 - {rule.atr_multiplier}×ATR({rule.atr_period}日) "
+                        f"时触发卖出，波动大时止损位自动放宽"
+                    ),
+                })
+            elif rule.rule_type == StopLossType.TIME:
+                scenarios.append({
+                    "rule_type": "时间止损",
+                    "threshold": f"{rule.max_holding_days}天",
+                    "description": f"持仓超过 {rule.max_holding_days} 天后强制平仓",
+                })
+            elif rule.rule_type == StopLossType.PROFIT_TRAILING:
+                scenarios.append({
+                    "rule_type": "盈利回撤止损",
+                    "threshold": f"盈利{rule.profit_trigger_pct:.0%}后回撤{rule.profit_drawback_pct:.0%}",
+                    "description": (
+                        f"当浮盈超过 {rule.profit_trigger_pct:.0%} 后，"
+                        f"从最高盈利点回落 {rule.profit_drawback_pct:.0%} 时触发卖出"
+                    ),
+                })
 
         return {
             "scenarios": scenarios,

@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # ChromaDB
     chroma_persist_dir: str = "./chroma_db"
 
+    # Data provider: "pytdx" (default, pure Python)
+    data_provider: str = "pytdx"
+
     # Logging
     log_level: str = "INFO"
 

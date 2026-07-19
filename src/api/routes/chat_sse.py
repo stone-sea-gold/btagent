@@ -4,6 +4,7 @@ Receives messages in Vercel AI SDK format, runs the LangGraph agent,
 and streams back events in the Vercel AI Data Stream protocol.
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -108,6 +109,11 @@ async def chat_sse(request: Request):
 
             # Stream text from all LLM calls (skip tool call events for v4 compatibility)
             async for event in graph.astream_events(input_state, version="v2"):
+                # Check if client disconnected
+                if await request.is_disconnected():
+                    logger.info("client_disconnected")
+                    break
+
                 kind = event.get("event", "")
 
                 if kind == "on_chat_model_stream":
@@ -123,8 +129,12 @@ async def chat_sse(request: Request):
                         elif isinstance(content, str) and content:
                             yield f"0:{json.dumps(content, ensure_ascii=False)}\n"
 
-            yield 'e:{"finishReason":"stop"}\n'
+            # Only send finish event if client is still connected
+            if not await request.is_disconnected():
+                yield 'e:{"finishReason":"stop"}\n'
 
+        except asyncio.CancelledError:
+            logger.info("stream_cancelled")
         except Exception as exc:
             logger.exception("chat_sse_error")
             yield f'3:{json.dumps(str(exc))}\n'

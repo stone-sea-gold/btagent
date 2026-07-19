@@ -69,8 +69,8 @@ class TradingCalendar:
         """Try to load Qlib's trading calendar for more accurate data."""
         try:
             import qlib
-            from qlib.data import Cal
-            self._qlib_calendar = Cal
+            from qlib.data import D
+            self._qlib_calendar = D
         except Exception:
             pass
 
@@ -82,8 +82,8 @@ class TradingCalendar:
         """
         try:
             import qlib
-            from qlib.data import Cal
-            cal = Cal.calendar()
+            from qlib.data import D
+            cal = D.calendar(start_time="2000-01-01", end_time="2030-12-31")
             if len(cal) > 0:
                 latest = str(cal[-1])[:10]  # YYYY-MM-DD
                 earliest = str(cal[0])[:10]

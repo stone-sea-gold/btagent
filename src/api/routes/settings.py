@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from src.agent.graph import invalidate_llm_cache
 from src.api.dependencies import get_services
 from src.config import settings
 
@@ -86,6 +87,7 @@ async def activate_preset(preset_id: int):
     result = services.settings_store.activate_preset(preset_id)
     if result is None:
         return {"status": "error", "message": "Preset not found"}
+    invalidate_llm_cache()
     return {"status": "activated", "config": _mask_key(result["api_key"])}
 
 
@@ -94,4 +96,5 @@ async def reset_to_default():
     """Deactivate all presets — next call falls back to .env."""
     services = get_services()
     services.settings_store.activate_preset(None)  # deactivates all
+    invalidate_llm_cache()
     return {"status": "reset"}

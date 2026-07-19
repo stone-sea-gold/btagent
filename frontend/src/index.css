@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* Deep dark theme for AIFUND5 */
+/* Deep dark theme for BT Agent */
 :root {
   --bg-primary: #0f1117;
   --bg-secondary: #1a1b23;

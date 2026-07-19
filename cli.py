@@ -25,13 +25,13 @@ from src.logging import configure_logging, get_logger
 from src.tools.storage_tools import StrategyStore
 
 
-def init_data():
+def init_data(force: bool = False):
     """Download Qlib data and load builtin factors."""
     print("正在初始化数据...")
 
-    print("  下载 Qlib A 股数据...")
+    print("  下载 Qlib A 股数据..." + (" (强制重新下载)" if force else ""))
     from src.data.qlib_setup import download_qlib_data
-    download_qlib_data()
+    download_qlib_data(force=force)
     print("  Qlib 数据下载完成")
 
     print("  加载内置因子库...")
@@ -194,11 +194,12 @@ def run_cli(session_id: str | None = None):
 def main():
     parser = argparse.ArgumentParser(description="AIFUND5 — A股量化投资助手")
     parser.add_argument("--init-data", action="store_true", help="下载 Qlib 数据并加载内置因子")
+    parser.add_argument("--force", action="store_true", help="强制重新下载数据（与 --init-data 一起使用）")
     parser.add_argument("--session", type=str, help="恢复指定会话 ID")
     args = parser.parse_args()
 
     if args.init_data:
-        init_data()
+        init_data(force=args.force)
     else:
         run_cli(session_id=args.session)
 

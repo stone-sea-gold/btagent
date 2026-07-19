@@ -6,14 +6,17 @@ export default function HistoryPage() {
   const [chats, setChats] = useState<ChatRecord[]>([])
   const navigate = useNavigate()
 
-  const refresh = () => setChats(listChats())
+  const refresh = async () => {
+    const data = await listChats()
+    setChats(data)
+  }
 
-  useEffect(refresh, [])
+  useEffect(() => { refresh() }, [])
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     deleteChat(id)
-    refresh()
+    await refresh()
   }
 
   const handleSelect = (id: string) => {

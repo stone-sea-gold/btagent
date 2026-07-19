@@ -18,7 +18,7 @@ export default function Sidebar() {
     >
       {/* Logo */}
       <div className="mb-8 text-xl font-bold" style={{ color: 'var(--accent)' }}>
-        A5
+        BT
       </div>
 
       {/* Navigation items */}

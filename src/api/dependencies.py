@@ -5,6 +5,7 @@ into API routes via FastAPI's dependency injection system.
 """
 
 from src.core.backtest_engine import BacktestEngine
+from src.core.chat_store import ChatStore
 from src.core.factor_store import FactorStore
 from src.core.param_optimizer import ParamOptimizer
 from src.core.position_manager import PositionManager
@@ -33,6 +34,7 @@ class ServiceContainer:
         )
         self.stock_selector = StockSelector(factor_store=self.factor_store)
         self.settings_store = SettingsStore()
+        self.chat_store = ChatStore()
 
     def close(self):
         """Clean up resources."""
@@ -42,6 +44,7 @@ class ServiceContainer:
         self.session_store.close()
         self.position_manager.close()
         self.settings_store.close()
+        self.chat_store.close()
 
 
 # Global singleton — initialized in app.py lifespan

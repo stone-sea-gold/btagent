@@ -23,7 +23,6 @@ export default function SettingsPage() {
   const [presets, setPresets] = useState<Preset[]>([])
   const [defaultPreset, setDefaultPreset] = useState<{ label: string; base_url: string; model: string } | null>(null)
   const [activeId, setActiveId] = useState<number | null>(null)
-  const [loading, setLoading] = useState(true)
 
   // Add form
   const [label, setLabel] = useState('')
@@ -47,8 +46,6 @@ export default function SettingsPage() {
       setActiveId(data.active_preset_id ?? null)
     } catch {
       showMsg('error', '加载预设失败')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -109,8 +106,6 @@ export default function SettingsPage() {
       showMsg('error', '重置失败')
     }
   }
-
-  const protocolHint = (url: string) => url.includes('/anthropic') ? 'Anthropic' : 'OpenAI'
 
   return (
     <div className="h-full flex flex-col">

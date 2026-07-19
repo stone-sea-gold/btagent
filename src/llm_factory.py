@@ -43,6 +43,7 @@ def _create_chat_anthropic(api_key: str, model: str, base_url: str = "") -> Base
         "anthropic_api_key": api_key,
         "timeout": settings.llm_timeout,
         "max_retries": settings.llm_max_retries,
+        "streaming": True,
     }
     if base_url:
         kwargs["base_url"] = base_url
@@ -58,6 +59,7 @@ def _create_chat_openai(api_key: str, model: str, base_url: str = "") -> BaseCha
         "api_key": api_key,
         "timeout": settings.llm_timeout,
         "max_retries": settings.llm_max_retries,
+        "streaming": True,
     }
     if base_url:
         kwargs["base_url"] = base_url

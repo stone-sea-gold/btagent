@@ -88,11 +88,13 @@ class BacktestEngine:
 
         try:
             result = self._execute_backtest(strategy_id, compiled_strategy, start_date, end_date, benchmark)
+        except BacktestError:
+            raise  # Already a BacktestError — don't double-wrap
         except Exception as e:
             logger.error("backtest_failed", strategy_id=strategy_id, error=str(e))
             raise BacktestError(
-                f"Backtest failed: {e}",
-                details={"strategy_id": strategy_id, "error": str(e)},
+                f"回测执行异常: {e}",
+                details={"strategy_id": strategy_id, "error": str(e), "error_type": type(e).__name__},
             ) from e
 
         # Cache result
@@ -111,99 +113,121 @@ class BacktestEngine:
         self, strategy_id, compiled_strategy, start_date, end_date, benchmark
     ) -> BacktestResult:
         """Execute the actual backtest using Qlib."""
+        # ── Step 1: Import Qlib ──────────────────────────────────────
         try:
             import qlib
-            from qlib.contrib.evaluate import backtest as qlib_backtest
-            from qlib.contrib.strategy.signal_strategy import TopkDropoutStrategy
-            import pandas as pd
-
-            # Ensure Qlib is initialized
-            try:
-                qlib.init(provider_uri=settings.qlib_data_path, region="cn")
-            except Exception:
-                pass  # Already initialized
-
-            # Build the strategy
-            strategy_config = compiled_strategy.get("qlib_strategy", {})
-            alpha_expr = compiled_strategy.get("alpha_expression", "")
-
-            # Create prediction data using the alpha expression
-            from qlib.data.dataset import DatasetH
-            from qlib.data.dataset.handler import DataHandlerLP
-
-            # Build signal using Qlib's expression engine
+            from qlib.contrib.evaluate import backtest_daily, risk_analysis
             from qlib.contrib.model.linear import LinearModel
             from qlib.data.dataset import DatasetH
+        except ImportError as e:
+            module = str(e).split("'")[-2] if "'" in str(e) else str(e)
+            logger.error("qlib_import_failed", error=str(e))
+            raise BacktestError(
+                f"Qlib 模块导入失败（{module}）。请确认已安装 qlib：pip install pyqlib",
+                details={"error": str(e), "error_type": "import_error", "module": module},
+            ) from e
 
-            # Use a simple approach: create a model that uses our alpha expression
-            # For now, use a lightweight model approach
-            fields = [f"Ref($close, 0) / Ref($close, 60) - 1"]  # Default to momentum
-            names = ["alpha"]
+        # ── Step 2: Initialize Qlib ──────────────────────────────────
+        try:
+            qlib.init(provider_uri=settings.qlib_data_path, region="cn")
+        except Exception:
+            pass  # Already initialized
 
-            # If we have a custom formula, use it
-            if alpha_expr and "Ref(" in alpha_expr:
-                fields = [alpha_expr]
-                names = ["alpha"]
+        # ── Step 3: Validate data availability ───────────────────────
+        try:
+            from qlib.data import D
+            cal = D.calendar(start_time="2000-01-01", end_time="2030-12-31")
+            if len(cal) == 0:
+                raise BacktestError(
+                    "Qlib 日历数据为空。请运行 `python cli.py --init-data --force` 重新下载数据。",
+                    details={"error_type": "data_empty"},
+                )
+            data_end = str(cal[-1])[:10]
+            data_start = str(cal[0])[:10]
+            if end_date > data_end:
+                raise BacktestError(
+                    f"回测结束日期 {end_date} 超出数据范围。"
+                    f"当前数据覆盖 {data_start} ~ {data_end}。"
+                    f"请将结束日期改为 {data_end} 或更早，或运行 `python cli.py --init-data --force` 更新数据。",
+                    details={
+                        "error_type": "date_out_of_range",
+                        "data_start": data_start,
+                        "data_end": data_end,
+                        "requested_end": end_date,
+                    },
+                )
+            if start_date > data_end:
+                raise BacktestError(
+                    f"回测开始日期 {start_date} 晚于数据最新日期 {data_end}。"
+                    f"请将开始日期改为 {data_end} 或更早。",
+                    details={
+                        "error_type": "date_out_of_range",
+                        "data_start": data_start,
+                        "data_end": data_end,
+                        "requested_start": start_date,
+                    },
+                )
+        except BacktestError:
+            raise
+        except Exception as e:
+            logger.warning("data_coverage_check_failed", error=str(e))
 
-            kwargs = {
-                "start_time": start_date,
-                "end_time": end_date,
-                "fit_start_time": start_date,
-                "fit_end_time": end_date,
-                "instruments": "csi300",
-            }
+        # ── Step 4: Build dataset and run backtest ───────────────────
+        try:
+            strategy_config = compiled_strategy.get("qlib_strategy", {})
+            topk = strategy_config.get("kwargs", {}).get("topk", 10)
 
-            # Create dataset with alpha expression
-            from qlib.data.dataset import DatasetH
             ds_conf = {
-                "class": "DatasetH",
-                "module_path": "qlib.data.dataset",
-                "kwargs": {
-                    "handler": {
-                        "class": "Alpha158",
-                        "module_path": "qlib.data.dataset.handler",
-                        "kwargs": {
-                            "start_time": start_date,
-                            "end_time": end_date,
-                            "fit_start_time": start_date,
-                            "fit_end_time": end_date,
-                            "instruments": "csi300",
-                            "infer_processors": [
-                                {"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}},
-                                {"class": "Fillna", "kwargs": {"fields_group": "feature"}},
-                            ],
-                            "learn_processors": [
-                                {"class": "DropnaLabel"},
-                                {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}},
-                            ],
-                        },
+                "handler": {
+                    "class": "Alpha158",
+                    "module_path": "qlib.contrib.data.handler",
+                    "kwargs": {
+                        "start_time": start_date,
+                        "end_time": end_date,
+                        "fit_start_time": start_date,
+                        "fit_end_time": end_date,
+                        "instruments": "csi300",
+                        "infer_processors": [
+                            {"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}},
+                            {"class": "Fillna", "kwargs": {"fields_group": "feature"}},
+                        ],
+                        "learn_processors": [
+                            {"class": "DropnaLabel"},
+                            {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}},
+                        ],
                     },
-                    "segments": {
-                        "train": (start_date, end_date),
-                        "valid": (start_date, end_date),
-                        "test": (start_date, end_date),
-                    },
+                },
+                "segments": {
+                    "train": (start_date, end_date),
+                    "valid": (start_date, end_date),
+                    "test": (start_date, end_date),
                 },
             }
 
-            dataset = DatasetH(**ds_conf["kwargs"])
-
-            # Create a simple linear model for prediction
+            dataset = DatasetH(**ds_conf)
             model = LinearModel()
             model.fit(dataset)
-            pred = model.predict(dataset)
 
-            # Run backtest with TopkDropoutStrategy
-            strategy = TopkDropoutStrategy(
-                signal=pred,
-                topk=strategy_config.get("kwargs", {}).get("topk", 10),
+            bt_strategy = {
+                "class": "TopkDropoutStrategy",
+                "module_path": "qlib.contrib.strategy.signal_strategy",
+                "kwargs": {
+                    "signal": (model, dataset),
+                    "topk": topk,
+                    "n_drop": topk,
+                },
+            }
+
+            report_normal, positions_normal = backtest_daily(
+                start_time=start_date,
+                end_time=end_date,
+                strategy=bt_strategy,
+                benchmark=benchmark,
             )
 
-            report, _ = qlib_backtest(pred, strategy)
-
-            # Parse results
-            metrics = self._parse_metrics(report)
-            equity_curve = self._parse_equity_curve(report)
+            risk_report = risk_analysis(report_normal)
+            metrics = self._parse_metrics(report_normal, risk_report)
+            equity_curve = self._parse_equity_curve(report_normal)
 
             return BacktestResult(
                 id=f"bt_{strategy_id}_{start_date}_{end_date}",
@@ -213,43 +237,82 @@ class BacktestEngine:
                 is_cached=False,
             )
 
-        except ImportError as e:
-            logger.error("qlib_not_available", error=str(e))
+        except BacktestError:
+            raise
+        except ZeroDivisionError as e:
+            logger.error("backtest_data_error", error=str(e))
             raise BacktestError(
-                "Qlib 未安装或数据不可用。请运行 `python cli.py --init-data` 初始化数据。",
-                details={"error": str(e)},
+                f"回测数据为空或无效（{start_date} ~ {end_date}）。"
+                f"请检查日期范围内是否有交易数据，或运行 `python cli.py --init-data --force` 重新下载数据。",
+                details={"error_type": "data_error", "error": str(e)},
+            ) from e
+        except Exception as e:
+            logger.error("backtest_runtime_error", error=str(e), error_type=type(e).__name__)
+            raise BacktestError(
+                f"回测运行失败（{type(e).__name__}）: {e}",
+                details={"error_type": "runtime_error", "error": str(e), "exception_type": type(e).__name__},
             ) from e
 
-    def _parse_metrics(self, report) -> BacktestMetrics:
-        """Parse Qlib backtest report into BacktestMetrics."""
+    def _parse_metrics(self, report_normal, risk_report=None) -> BacktestMetrics:
+        """Parse Qlib backtest report into BacktestMetrics.
+
+        Args:
+            report_normal: Dict from backtest_daily — keys like '1day',
+                           values are DataFrames with 'return' column.
+            risk_report: DataFrame from risk_analysis (optional).
+        """
         try:
-            # Qlib report is a DataFrame with portfolio returns
-            if hasattr(report, 'iloc'):
-                returns = report['return'] if 'return' in report.columns else report.iloc[:, 0]
-                total_return = (1 + returns).prod() - 1
-                annualized_return = (1 + total_return) ** (252 / len(returns)) - 1
-                volatility = returns.std() * (252 ** 0.5)
-                sharpe = annualized_return / volatility if volatility > 0 else 0
+            import pandas as pd
+            import numpy as np
 
-                # Max drawdown
-                cumulative = (1 + returns).cumprod()
-                rolling_max = cumulative.expanding().max()
-                drawdown = (cumulative - rolling_max) / rolling_max
-                max_drawdown = drawdown.min()
-                max_dd_duration = 0  # Simplified
+            # Extract the daily returns DataFrame
+            # report_normal is a dict like {'1day': DataFrame} or directly a DataFrame
+            if isinstance(report_normal, dict):
+                # Use first available frequency
+                df = next(iter(report_normal.values()))
+            else:
+                df = report_normal
 
-                win_rate = (returns > 0).sum() / len(returns)
+            # Get returns column
+            if hasattr(df, 'columns'):
+                if 'return' in df.columns:
+                    returns = df['return'].dropna()
+                elif 'excess_return_without_cost' in df.columns:
+                    returns = df['excess_return_without_cost'].dropna()
+                else:
+                    returns = df.iloc[:, 0].dropna()
+            else:
+                returns = pd.Series(df).dropna()
 
-                return BacktestMetrics(
-                    total_return=round(total_return, 4),
-                    annualized_return=round(annualized_return, 4),
-                    sharpe_ratio=round(sharpe, 4),
-                    max_drawdown=round(max_drawdown, 4),
-                    max_drawdown_duration=max_dd_duration,
-                    volatility=round(volatility, 4),
-                    win_rate=round(win_rate, 4),
-                    turnover=0.0,  # Would need holdings data
-                )
+            if len(returns) == 0:
+                raise ValueError("Empty returns series")
+
+            # Compute metrics from returns
+            total_return = float((1 + returns).prod() - 1)
+            n_days = len(returns)
+            annualized_return = float((1 + total_return) ** (252 / max(n_days, 1)) - 1)
+            volatility = float(returns.std() * (252 ** 0.5))
+            sharpe = float(annualized_return / volatility) if volatility > 0 else 0.0
+
+            # Max drawdown
+            cumulative = (1 + returns).cumprod()
+            rolling_max = cumulative.expanding().max()
+            drawdown = (cumulative - rolling_max) / rolling_max
+            max_drawdown = float(drawdown.min())
+            max_dd_duration = 0
+
+            win_rate = float((returns > 0).sum() / len(returns))
+
+            return BacktestMetrics(
+                total_return=round(total_return, 4),
+                annualized_return=round(annualized_return, 4),
+                sharpe_ratio=round(sharpe, 4),
+                max_drawdown=round(max_drawdown, 4),
+                max_drawdown_duration=max_dd_duration,
+                volatility=round(volatility, 4),
+                win_rate=round(win_rate, 4),
+                turnover=0.0,
+            )
         except Exception as e:
             logger.warning("metrics_parse_error", error=str(e))
 
@@ -260,19 +323,35 @@ class BacktestEngine:
             win_rate=0.0, turnover=0.0,
         )
 
-    def _parse_equity_curve(self, report) -> list[dict]:
+    def _parse_equity_curve(self, report_normal) -> list[dict]:
         """Parse Qlib report into equity curve data points."""
         try:
-            if hasattr(report, 'iloc'):
-                returns = report['return'] if 'return' in report.columns else report.iloc[:, 0]
-                cumulative = (1 + returns).cumprod()
-                curve = []
-                for date, value in cumulative.items():
-                    curve.append({
-                        "date": str(date)[:10],
-                        "value": round(float(value), 4),
-                    })
-                return curve
+            import pandas as pd
+
+            # Extract the daily returns DataFrame
+            if isinstance(report_normal, dict):
+                df = next(iter(report_normal.values()))
+            else:
+                df = report_normal
+
+            if hasattr(df, 'columns'):
+                if 'return' in df.columns:
+                    returns = df['return'].dropna()
+                elif 'excess_return_without_cost' in df.columns:
+                    returns = df['excess_return_without_cost'].dropna()
+                else:
+                    returns = df.iloc[:, 0].dropna()
+            else:
+                returns = pd.Series(df).dropna()
+
+            cumulative = (1 + returns).cumprod()
+            curve = []
+            for date, value in cumulative.items():
+                curve.append({
+                    "date": str(date)[:10],
+                    "value": round(float(value), 4),
+                })
+            return curve
         except Exception as e:
             logger.warning("equity_curve_parse_error", error=str(e))
         return []
@@ -307,6 +386,34 @@ class BacktestEngine:
             (cache_key, strategy_id, result.model_dump_json(), datetime.now().isoformat()),
         )
         self._conn.commit()
+
+    def list_all(self, limit: int = 50) -> list[dict]:
+        """List all cached backtest results (summary, no equity curve)."""
+        rows = self._conn.execute(
+            "SELECT result_json, created_at FROM backtest_results ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        results = []
+        for row in rows:
+            data = json.loads(row["result_json"])
+            results.append({
+                "backtest_id": data.get("id", ""),
+                "strategy_id": data.get("strategy_id", ""),
+                "metrics": data.get("metrics", {}),
+                "created_at": row["created_at"],
+            })
+        return results
+
+    def get_by_id(self, backtest_id: str) -> BacktestResult | None:
+        """Retrieve a specific backtest result by its ID."""
+        rows = self._conn.execute(
+            "SELECT result_json FROM backtest_results",
+        ).fetchall()
+        for row in rows:
+            data = json.loads(row["result_json"])
+            if data.get("id") == backtest_id:
+                return BacktestResult(**data)
+        return None
 
     def close(self) -> None:
         """Close database connections."""

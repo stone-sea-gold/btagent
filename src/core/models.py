@@ -361,6 +361,9 @@ class StopLossType(str, Enum):
     FIXED = "fixed"
     TRAILING = "trailing"
     MAX_DRAWDOWN = "max_drawdown"
+    ATR = "atr"
+    TIME = "time"
+    PROFIT_TRAILING = "profit_trailing"
 
 
 class StopLossRule(BaseModel):
@@ -368,6 +371,11 @@ class StopLossRule(BaseModel):
     rule_type: StopLossType
     threshold: float = Field(description="Percentage threshold (e.g., 0.08 = 8%)")
     scope: str = Field(default="portfolio", description="'portfolio' or stock_code")
+    atr_period: int = Field(default=14, description="ATR period (ATR stop only)")
+    atr_multiplier: float = Field(default=2.0, description="ATR multiplier (ATR stop only)")
+    max_holding_days: int = Field(default=0, description="Max holding days (time stop only)")
+    profit_trigger_pct: float = Field(default=0.1, description="Profit trigger pct (profit trailing only)")
+    profit_drawback_pct: float = Field(default=0.05, description="Profit drawback pct (profit trailing only)")
 
 
 class StopLossEvent(BaseModel):

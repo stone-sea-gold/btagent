@@ -93,3 +93,15 @@ class OptimizationError(AIFundError):
 
 class StopLossError(AIFundError):
     """Errors related to stop-loss operations."""
+
+
+class DataSourceError(AIFundError):
+    """Errors related to external data source operations."""
+
+
+class DataSourceTimeoutError(DataSourceError):
+    """Data source request timed out."""
+
+
+class DataSourceUnavailableError(DataSourceError):
+    """Data source is temporarily unavailable."""

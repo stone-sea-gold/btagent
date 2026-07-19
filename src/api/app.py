@@ -55,8 +55,9 @@ async def health():
 
 
 # Register REST route modules
-from src.api.routes import backtest, calendar, data, factors, portfolio, selection, settings, strategies  # noqa: E402
+from src.api.routes import backtest, calendar, chats, data, factors, market_data, portfolio, selection, settings, strategies  # noqa: E402
 
+app.include_router(chats.router, prefix="/api/chats", tags=["chats"])
 app.include_router(factors.router, prefix="/api/factors", tags=["factors"])
 app.include_router(strategies.router, prefix="/api/strategies", tags=["strategies"])
 app.include_router(backtest.router, prefix="/api/backtest", tags=["backtest"])
@@ -65,6 +66,7 @@ app.include_router(portfolio.router, prefix="/api/portfolio", tags=["portfolio"]
 app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
 app.include_router(data.router, prefix="/api/data", tags=["data"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(market_data.router, prefix="/api/market-data", tags=["market-data"])
 
 
 # Register Vercel AI SDK chat SSE endpoint

@@ -54,8 +54,26 @@ from src.tools.calendar_tools import (
     get_trading_days as _get_trading_days_fn,
 )
 from src.tools.data_tools import check_data_coverage as _check_data_coverage_fn
+from src.tools.market_data_tools import (
+    fetch_stock_quote as _fetch_stock_quote_fn,
+    fetch_stock_hist as _fetch_stock_hist_fn,
+    fetch_financial_summary as _fetch_financial_summary_fn,
+    fetch_sector_flow as _fetch_sector_flow_fn,
+    fetch_quarterly_financials as _fetch_quarterly_financials_fn,
+    fetch_industry_stocks as _fetch_industry_stocks_fn,
+    fetch_index_constituents as _fetch_index_constituents_fn,
+)
 
 logger = get_logger("agent_graph")
+
+# Module-level LLM cache — shared across graph instances
+_llm_cache: dict = {"key": None, "instance": None}
+
+
+def invalidate_llm_cache() -> None:
+    """Clear the cached LLM instance. Call after config changes."""
+    _llm_cache["key"] = None
+    _llm_cache["instance"] = None
 
 
 def create_agent_graph(
@@ -289,6 +307,46 @@ def create_agent_graph(
         """Check Qlib data coverage and freshness."""
         return _check_data_coverage_fn()
 
+    # ── Market data tool functions ────────────────────────────────
+
+    def _fetch_stock_quote(symbol: str) -> str:
+        """获取个股实时行情（最新价、涨跌幅、成交量、换手率）"""
+        import json
+        return json.dumps(_fetch_stock_quote_fn(symbol), ensure_ascii=False, indent=2)
+
+    def _fetch_stock_hist(
+        symbol: str, start: str = "", end: str = "",
+        period: str = "daily", adjust: str = "qfq",
+    ) -> str:
+        """获取历史 K 线数据（日/周/月线，前复权/后复权）"""
+        import json
+        return json.dumps(_fetch_stock_hist_fn(symbol, start, end, period, adjust), ensure_ascii=False, indent=2)
+
+    def _fetch_financial_summary(symbol: str) -> str:
+        """获取个股基本面摘要（PE、PB、ROE、市值等）"""
+        import json
+        return json.dumps(_fetch_financial_summary_fn(symbol), ensure_ascii=False, indent=2)
+
+    def _fetch_sector_flow() -> str:
+        """获取行业板块列表"""
+        import json
+        return json.dumps(_fetch_sector_flow_fn(), ensure_ascii=False, indent=2)
+
+    def _fetch_quarterly_financials(symbol: str, year: int = 0, quarter: int = 0) -> str:
+        """获取季度财务指标（ROE/净利润率/毛利率等）"""
+        import json
+        return json.dumps(_fetch_quarterly_financials_fn(symbol, year, quarter), ensure_ascii=False, indent=2)
+
+    def _fetch_industry_stocks(industry: str) -> str:
+        """按行业获取股票列表"""
+        import json
+        return json.dumps(_fetch_industry_stocks_fn(industry), ensure_ascii=False, indent=2)
+
+    def _fetch_index_constituents(index: str = "csi300") -> str:
+        """获取指数成分股列表（沪深300/中证500等）"""
+        import json
+        return json.dumps(_fetch_index_constituents_fn(index), ensure_ascii=False, indent=2)
+
     # ── Bind tools ─────────────────────────────────────────────────
 
     tools = [
@@ -316,6 +374,13 @@ def create_agent_graph(
         _resolve_relative_date,
         _get_trading_days,
         _check_data_coverage,
+        _fetch_stock_quote,
+        _fetch_stock_hist,
+        _fetch_financial_summary,
+        _fetch_sector_flow,
+        _fetch_quarterly_financials,
+        _fetch_industry_stocks,
+        _fetch_index_constituents,
     ]
 
     # Load system prompt
@@ -325,14 +390,27 @@ def create_agent_graph(
     # ── Graph nodes ────────────────────────────────────────────────
 
     def _get_llm():
-        """Create a fresh LLM every call so DB config overrides take effect immediately."""
-        return create_llm().bind_tools(tools)
+        """Create or reuse an LLM instance. Reuses when config unchanged."""
+        from src.llm_factory import _load_override
+        from src.config import settings as _settings
+
+        cfg = _load_override()
+        if cfg and cfg.base_url and cfg.api_key and cfg.model:
+            key = (cfg.model, cfg.api_key, cfg.base_url)
+        else:
+            key = (_settings.llm_provider, _settings.llm_api_key, _settings.llm_model)
+
+        if _llm_cache["key"] == key and _llm_cache["instance"] is not None:
+            return _llm_cache["instance"]
+
+        llm = create_llm().bind_tools(tools)
+        _llm_cache["key"] = key
+        _llm_cache["instance"] = llm
+        return llm
 
     def agent_node(state: AgentState) -> dict:
         """Main agent node — calls LLM with tools."""
         messages = state["messages"]
-
-        logger.info("agent_node_debug", msg_count=len(messages), msg_types=str([type(m).__name__ for m in messages[:3]]))
 
         if not messages or not isinstance(messages[0], SystemMessage):
             messages = [SystemMessage(content=system_prompt)] + messages
@@ -417,6 +495,13 @@ def create_agent_graph(
             "_resolve_relative_date": _resolve_relative_date,
             "_get_trading_days": _get_trading_days,
             "_check_data_coverage": _check_data_coverage,
+            "_fetch_stock_quote": _fetch_stock_quote,
+            "_fetch_stock_hist": _fetch_stock_hist,
+            "_fetch_financial_summary": _fetch_financial_summary,
+            "_fetch_sector_flow": _fetch_sector_flow,
+            "_fetch_quarterly_financials": _fetch_quarterly_financials,
+            "_fetch_industry_stocks": _fetch_industry_stocks,
+            "_fetch_index_constituents": _fetch_index_constituents,
         }
 
         results = []

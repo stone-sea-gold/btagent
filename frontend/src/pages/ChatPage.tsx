@@ -3,7 +3,7 @@ import { useChat } from '@ai-sdk/react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { createChat, getChat, saveChat, listChats, type ChatMessage } from '../utils/chatStore'
+import { createChat, getChat, saveChat, listChatsSync, type ChatMessage } from '../utils/chatStore'
 
 const toolLabels: Record<string, string> = {
   _search_factors: '搜索因子',
@@ -48,7 +48,7 @@ export default function ChatPage() {
   useEffect(() => {
     const id = searchParams.get('id')
     if (!id) {
-      const fallback = listChats()[0]?.id || createChat()
+      const fallback = listChatsSync()[0]?.id || createChat()
       navigate(`/chat?id=${fallback}`, { replace: true })
     }
   }, [])
@@ -69,14 +69,37 @@ function ChatSession({ chatId }: { chatId: string }) {
 
   // Load persisted messages
   const saved = getChat(chatId)
-  const initialMessages: ChatMessage[] = saved?.messages || []
+  const initialMessages = saved?.messages.map(m => ({
+    ...m,
+    createdAt: m.createdAt ? new Date(m.createdAt) : undefined,
+  })) || []
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, isLoading, stop, setMessages, setInput } = useChat({
     api: '/api/chat',
     id: chatId,
     initialMessages,
-    maxSteps: 10,
+    maxSteps: 5,
   })
+
+  // Refresh: resend a user message, removing it and all subsequent messages
+  const handleRefresh = useCallback((messageId: string) => {
+    const idx = messages.findIndex(m => m.id === messageId)
+    if (idx === -1) return
+    const content = messages[idx].content
+    if (!content) return
+
+    // Remove this message and everything after it
+    const newMessages = messages.slice(0, idx)
+    setMessages(newMessages)
+
+    // Set input and trigger submit
+    setInput(content)
+    // Use setTimeout to ensure state updates before submit
+    setTimeout(() => {
+      const form = document.querySelector('form')
+      form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    }, 50)
+  }, [messages, setMessages])
 
   // Persist messages when they change
   useEffect(() => {
@@ -126,7 +149,7 @@ function ChatSession({ chatId }: { chatId: string }) {
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
-          AIFUND5 助手
+          BT Agent
         </h1>
         <button
           onClick={startNewChat}
@@ -161,7 +184,7 @@ function ChatSession({ chatId }: { chatId: string }) {
                 A5
               </div>
               <p className="text-lg mb-1" style={{ color: 'var(--text-primary)' }}>
-                AIFUND5 量化投资助手
+                BT Agent 量化投资助手
               </p>
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                 输入自然语言指令，Agent 会自动调用工具完成任务
@@ -196,9 +219,22 @@ function ChatSession({ chatId }: { chatId: string }) {
         ) : (
           <div className="space-y-4">
             {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
+                <div className="relative max-w-[80%]">
+                  {/* Refresh button for user messages */}
+                  {msg.role === 'user' && !isLoading && (
+                    <button
+                      onClick={() => handleRefresh(msg.id)}
+                      className="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 rounded hover:bg-white/10"
+                      title="重新提问"
+                    >
+                      <svg className="w-4 h-4" style={{ color: 'var(--text-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                  )}
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                  className={`rounded-2xl px-4 py-3 ${
                     msg.role === 'user' ? 'rounded-br-md' : 'rounded-bl-md'
                   }`}
                   style={{
@@ -230,12 +266,6 @@ function ChatSession({ chatId }: { chatId: string }) {
                             <span
                               className="inline-block w-3 h-3 rounded-full"
                               style={{ backgroundColor: 'var(--success)' }}
-                            />
-                          )}
-                          {inv.state === 'error' && (
-                            <span
-                              className="inline-block w-3 h-3 rounded-full"
-                              style={{ backgroundColor: 'var(--danger)' }}
                             />
                           )}
                           <span className="font-medium">
@@ -288,6 +318,7 @@ function ChatSession({ chatId }: { chatId: string }) {
                     </div>
                   )}
                 </div>
+                </div>
               </div>
             ))}
             <div ref={messagesEndRef} />
@@ -326,26 +357,38 @@ function ChatSession({ chatId }: { chatId: string }) {
             disabled={isLoading}
           />
         </div>
-        <button
-          type="submit"
-          disabled={isLoading || !input.trim()}
-          className="px-6 py-3 rounded-xl text-sm font-medium transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
-          style={{
-            background: isLoading ? 'var(--bg-tertiary)' : 'var(--accent-gradient)',
-            color: '#ffffff',
-            boxShadow: !isLoading && input.trim() ? '0 4px 14px rgba(99, 102, 241, 0.4)' : 'none',
-          }}
-        >
-          {isLoading ? (
+        {isLoading ? (
+          <button
+            type="button"
+            onClick={stop}
+            className="px-6 py-3 rounded-xl text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95"
+            style={{
+              background: 'linear-gradient(135deg, #ef4444 0%, #f97316 100%)',
+              color: '#ffffff',
+              boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)',
+            }}
+          >
             <span className="flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="inline-block w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: '300ms' }} />
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+              停止
             </span>
-          ) : (
-            '发送'
-          )}
-        </button>
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="px-6 py-3 rounded-xl text-sm font-medium transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
+            style={{
+              background: 'var(--accent-gradient)',
+              color: '#ffffff',
+              boxShadow: input.trim() ? '0 4px 14px rgba(99, 102, 241, 0.4)' : 'none',
+            }}
+          >
+            发送
+          </button>
+        )}
       </form>
     </div>
   )
