@@ -20,12 +20,13 @@
 - **search_strategies**: 用自然语言搜索策略（如"动量策略"、"防守型策略"）
 - **compare_strategies**: 比较多个策略（输入逗号分隔的 strategy_id）
 - **update_strategy**: 修改策略并创建新版本（输入 strategy_id + 修改参数 JSON）
+- **delete_strategy**: 删除策略（输入 strategy_id）
 - **get_version_chain**: 查看策略的完整版本历史
 
 ### 选股
 - **select_stocks**: 多级选股（因子打分排名 + 条件筛选）
 
-### 市场数据
+### 市场数据（实时行情）
 - **fetch_stock_quote**: 获取个股实时行情（最新价、涨跌幅、成交量）
 - **fetch_stock_hist**: 获取历史 K 线数据（日/周/月线，前复权/后复权）
 - **fetch_financial_summary**: 获取个股基本面摘要
@@ -33,6 +34,39 @@
 - **fetch_quarterly_financials**: 获取季度财务指标（ROE/净利润率/毛利率等）
 - **fetch_industry_stocks**: 按行业获取股票列表
 - **fetch_index_constituents**: 获取指数成分股列表（沪深300/中证500等）
+
+### 研报数据
+- **fetch_stock_reports**: 获取个股研报列表（评级、目标价、机构）
+- **fetch_industry_reports**: 获取行业研报
+- **fetch_eps_forecast**: 获取机构一致预期EPS
+- **fetch_valuation**: 获取完整估值分析（PE/PEG/消化时间）
+
+### 信号数据
+- **fetch_northbound_flow**: 获取北向资金实时流向（沪股通/深股通）
+- **fetch_concept_blocks**: 获取个股所属板块概念（行业/概念/地域）
+- **fetch_fund_flow**: 获取个股资金流向（主力/大单/中单/小单，分钟级）
+- **fetch_dragon_tiger**: 获取个股龙虎榜席位数据
+- **fetch_daily_dragon_tiger**: 获取全市场龙虎榜数据
+- **fetch_lockup_expiry**: 获取限售解禁预警（未来90天）
+- **fetch_industry_ranking**: 获取行业涨跌排名
+
+### 资金面
+- **fetch_margin_trading**: 获取融资融券数据
+- **fetch_block_trade**: 获取大宗交易数据
+- **fetch_holder_change**: 获取股东户数变化（筹码集中度）
+- **fetch_dividend_history**: 获取分红送转历史
+- **fetch_fund_flow_120d**: 获取个股120日资金流向
+
+### 新闻公告
+- **fetch_stock_news**: 获取个股新闻
+- **fetch_market_telegraph**: 获取财联社全市场快讯
+- **fetch_global_news**: 获取东财全球财经资讯
+- **fetch_announcements**: 获取公司公告（巨潮源）
+
+### 舆情互动
+- **fetch_hot_list**: 获取同花顺热榜
+- **fetch_hot_rank**: 获取东财人气榜
+- **fetch_hot_concept**: 获取个股概念命中
 
 ### 仓位管理
 - **save_holdings**: 保存用户持仓
@@ -250,6 +284,22 @@
 - "茅台去年Q4的ROE是多少" → fetch_quarterly_financials
 - "银行板块有哪些股票" → fetch_industry_stocks
 - "沪深300有哪些成分股" → fetch_index_constituents
+- "茅台有什么研报" → fetch_stock_reports
+- "茅台的PE是多少，估值怎么样" → fetch_valuation
+- "北向资金今天流入多少" → fetch_northbound_flow
+- "茅台属于哪些概念板块" → fetch_concept_blocks
+- "茅台今天主力资金流入还是流出" → fetch_fund_flow
+- "茅台最近上过龙虎榜吗" → fetch_dragon_tiger
+- "茅台未来有没有解禁" → fetch_lockup_expiry
+- "今天哪些行业涨幅最大" → fetch_industry_ranking
+- "茅台的融资余额变化" → fetch_margin_trading
+- "茅台最近有没有大宗交易" → fetch_block_trade
+- "茅台股东户数变化" → fetch_holder_change
+- "茅台分红历史" → fetch_dividend_history
+- "茅台最近有什么新闻" → fetch_stock_news
+- "财联社今天有什么快讯" → fetch_market_telegraph
+- "茅台发了什么公告" → fetch_announcements
+- "今天市场热榜" → fetch_hot_list
 
 ### 回测分析报告框架
 

@@ -10,6 +10,7 @@ from src.api.schemas import (
 )
 from src.tools.comparison_tools import compare_strategies, update_strategy
 from src.tools.storage_tools import (
+    delete_strategy,
     list_strategies,
     load_strategy,
     save_strategy,
@@ -86,3 +87,10 @@ async def compare_strategies_endpoint(req: StrategyCompareRequest):
     services = get_services()
     result = compare_strategies(req.strategy_ids, services.strategy_store)
     return result
+
+
+@router.delete("/{strategy_id}")
+async def delete_strategy_endpoint(strategy_id: str):
+    """Delete a strategy."""
+    services = get_services()
+    return delete_strategy(strategy_id, services.strategy_store)

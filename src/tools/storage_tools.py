@@ -55,13 +55,15 @@ class StrategyStore:
                 parent_id TEXT,
                 version INTEGER DEFAULT 1,
                 backtest_result_id TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );
         """)
         # Migration: add new columns if they don't exist (for existing databases)
         self._migrate_add_column("agent_summary", "TEXT DEFAULT ''")
         self._migrate_add_column("parent_id", "TEXT")
         self._migrate_add_column("version", "INTEGER DEFAULT 1")
+        self._migrate_add_column("updated_at", "TEXT NOT NULL DEFAULT ''")
         self._conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_strategies_created_at ON strategies(created_at);
             CREATE INDEX IF NOT EXISTS idx_strategies_name ON strategies(name);
@@ -94,10 +96,10 @@ class StrategyStore:
 
         self._conn.execute(
             """INSERT INTO strategies
-               (id, name, config_json, description, agent_summary, parent_id, version, backtest_result_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (id, name, config_json, description, agent_summary, parent_id, version, backtest_result_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (strategy_id, name, json.dumps(config, ensure_ascii=False), description,
-             agent_summary, parent_id, version, backtest_result_id, now),
+             agent_summary, parent_id, version, backtest_result_id, now, now),
         )
         self._conn.commit()
 
@@ -125,10 +127,49 @@ class StrategyStore:
             )
         return self._row_to_dict(row)
 
+    def delete(self, strategy_id: str) -> dict:
+        """Delete a strategy by ID. Removes from SQLite and ChromaDB."""
+        row = self._conn.execute(
+            "SELECT * FROM strategies WHERE id = ?", (strategy_id,)
+        ).fetchone()
+        if not row:
+            raise StrategyNotFoundError(
+                f"Strategy '{strategy_id}' not found",
+                details={"strategy_id": strategy_id},
+            )
+
+        name = row["name"]
+        version = row["version"]
+
+        self._conn.execute("DELETE FROM strategies WHERE id = ?", (strategy_id,))
+        self._conn.commit()
+
+        # Remove from vector DB
+        try:
+            ids = self._collection.get(ids=[strategy_id])
+            if ids and ids["ids"]:
+                self._collection.delete(ids=[strategy_id])
+        except Exception:
+            pass  # ChromaDB may not have this entry
+
+        logger.info("strategy_deleted", strategy_id=strategy_id, name=name, version=version)
+        return {"strategy_id": strategy_id, "name": name, "version": version, "status": "deleted"}
+
+    def update_timestamp(self, strategy_id: str) -> None:
+        """Update the updated_at timestamp for a strategy."""
+        now = datetime.now().isoformat()
+        self._conn.execute(
+            "UPDATE strategies SET updated_at = ? WHERE id = ?", (now, strategy_id)
+        )
+        self._conn.commit()
+
     def list_all(self, limit: int = 20) -> list[dict]:
-        """List all strategies (latest first)."""
+        """List all strategies, showing each record's version and the latest version for the name."""
         rows = self._conn.execute(
-            "SELECT id, name, description, version, parent_id, created_at FROM strategies ORDER BY created_at DESC LIMIT ?",
+            """SELECT s.id, s.name, s.description, s.version, s.parent_id, s.created_at, s.updated_at,
+                      (SELECT MAX(s2.version) FROM strategies s2 WHERE s2.name = s.name) AS latest_version
+               FROM strategies s
+               ORDER BY s.created_at DESC LIMIT ?""",
             (limit,),
         ).fetchall()
         return [
@@ -137,8 +178,10 @@ class StrategyStore:
                 "name": row["name"],
                 "description": row["description"],
                 "version": row["version"],
+                "latest_version": row["latest_version"],
                 "parent_id": row["parent_id"],
                 "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
             }
             for row in rows
         ]
@@ -210,6 +253,7 @@ class StrategyStore:
             "version": row["version"],
             "backtest_result_id": row["backtest_result_id"],
             "created_at": row["created_at"],
+            "updated_at": row["updated_at"] if "updated_at" in row.keys() else "",
             "status": "loaded",
         }
 
@@ -249,3 +293,8 @@ def list_strategies(store: StrategyStore, limit: int = 20) -> list[dict]:
 def search_strategies(query: str, store: StrategyStore, limit: int = 5) -> list[dict]:
     """Search strategies by semantic similarity."""
     return store.search_strategies(query=query, limit=limit)
+
+
+def delete_strategy(strategy_id: str, store: StrategyStore) -> dict:
+    """Delete a strategy from persistent storage."""
+    return store.delete(strategy_id=strategy_id)

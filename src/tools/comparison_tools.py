@@ -97,18 +97,38 @@ def update_strategy(
     config = original["config"].copy()
     config.update(modifications)
 
+    # Build description diff
+    changes = []
+    for key, val in modifications.items():
+        old_val = original["config"].get(key)
+        changes.append(f"{key}: {old_val} → {val}")
+    diff_str = "；".join(changes)
+
+    new_description = original.get("description", "")
+    if diff_str:
+        if new_description:
+            new_description = f"{new_description}（{diff_str}）"
+        else:
+            new_description = diff_str
+
     # Create new version
     new_version = original.get("version", 1) + 1
     new_summary = agent_summary or original.get("agent_summary", "")
 
+    # Update timestamp on the original strategy
+    store.update_timestamp(strategy_id)
+
     result = store.save(
         name=original["name"],
         config=config,
-        description=original.get("description", ""),
+        description=new_description,
         agent_summary=new_summary,
         version=new_version,
         parent_id=strategy_id,
     )
+
+    # Also update timestamp on the new version to match
+    store.update_timestamp(result["strategy_id"])
 
     logger.info(
         "strategy_updated",

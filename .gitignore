@@ -56,3 +56,6 @@ Agentic UI 架构指南.md
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+
+# Claude local settings
+.claude/settings.local.json

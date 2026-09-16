@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # Qlib
     qlib_data_path: str = str(Path.home() / ".qlib" / "qlib_data" / "cn_data")
 
+    # Dataset exported from the market warehouse (src/data/qlib_export.py).
+    # Preferred by the backtest engine once present; qlib_data_path stays as a
+    # fallback for an official download that predates the data layer.
+    qlib_export_path: str = str(Path(__file__).parent.parent / "data" / "market" / "qlib")
+
     # Database
     sqlite_db_path: str = "./data/aifund.db"
 
@@ -57,6 +62,24 @@ class Settings(BaseSettings):
 
     # Data provider: "pytdx" (default, pure Python)
     data_provider: str = "pytdx"
+
+    # Market data warehouse (DuckDB). Holds unadjusted bars plus adjustment
+    # factors; the Qlib dataset is exported from here for backtesting.
+    market_data_dir: str = str(Path(__file__).parent.parent / "data" / "market")
+    market_data_db: str = str(Path(__file__).parent.parent / "data" / "market" / "market.duckdb")
+
+    # Index exported alongside stock data, used as the backtest benchmark. Its
+    # features ship with the dataset but it must not look tradable, so the
+    # exporter keeps it out of instruments/all.txt.
+    benchmark_code: str = "000300.SH"
+
+    # Agent-side sync defaults, so a conversational pull has sane bounds: one
+    # year keeps the loop fast, and csi300 is the universe the engine works on.
+    default_sync_index: str = "csi300"
+    years_sync_default: int = 1
+
+    # Source priority, most stable first. Used by build_provider_chain().
+    data_source_priority: str = "baostock,pytdx,akshare"
 
     # Logging
     log_level: str = "INFO"

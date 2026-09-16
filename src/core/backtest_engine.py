@@ -25,6 +25,13 @@ from src.logging import get_logger
 logger = get_logger("backtest_engine")
 
 
+def to_qlib_code(code: str) -> str:
+    """Canonical warehouse code -> Qlib instrument name (SH600519)."""
+    from src.data.codes import parse
+
+    return parse(code).to_qlib()
+
+
 class BacktestEngine:
     """Qlib backtest wrapper with caching and result parsing."""
 
@@ -87,6 +94,8 @@ class BacktestEngine:
         )
 
         try:
+            if not benchmark:
+                benchmark = to_qlib_code(settings.benchmark_code)
             result = self._execute_backtest(strategy_id, compiled_strategy, start_date, end_date, benchmark)
         except BacktestError:
             raise  # Already a BacktestError — don't double-wrap
@@ -115,7 +124,6 @@ class BacktestEngine:
         """Execute the actual backtest using Qlib."""
         # ── Step 1: Import Qlib ──────────────────────────────────────
         try:
-            import qlib
             from qlib.contrib.evaluate import backtest_daily, risk_analysis
             from qlib.contrib.model.linear import LinearModel
             from qlib.data.dataset import DatasetH
@@ -128,10 +136,9 @@ class BacktestEngine:
             ) from e
 
         # ── Step 2: Initialize Qlib ──────────────────────────────────
-        try:
-            qlib.init(provider_uri=settings.qlib_data_path, region="cn")
-        except Exception:
-            pass  # Already initialized
+        from src.data.qlib_dataset import ensure_init
+
+        ensure_init()
 
         # ── Step 3: Validate data availability ───────────────────────
         try:
@@ -139,7 +146,7 @@ class BacktestEngine:
             cal = D.calendar(start_time="2000-01-01", end_time="2030-12-31")
             if len(cal) == 0:
                 raise BacktestError(
-                    "Qlib 日历数据为空。请运行 `python cli.py --init-data --force` 重新下载数据。",
+                    "Qlib 日历数据为空。请运行 `python cli.py --sync-data` 并 `python cli.py --export-qlib` 导出数据。",
                     details={"error_type": "data_empty"},
                 )
             data_end = str(cal[-1])[:10]
@@ -174,8 +181,10 @@ class BacktestEngine:
 
         # ── Step 4: Build dataset and run backtest ───────────────────
         try:
-            strategy_config = compiled_strategy.get("qlib_strategy", {})
-            topk = strategy_config.get("kwargs", {}).get("topk", 10)
+            # The compiler normally fills qlib_strategy in; a None (a strategy
+            # without selection yet) falls back to the engine's own default.
+            strategy_config = (compiled_strategy or {}).get("qlib_strategy") or {}
+            topk = (strategy_config.get("kwargs") or {}).get("topk", 10)
 
             ds_conf = {
                 "handler": {
@@ -186,7 +195,10 @@ class BacktestEngine:
                         "end_time": end_date,
                         "fit_start_time": start_date,
                         "fit_end_time": end_date,
-                        "instruments": "csi300",
+                                                # The exported dataset lists its trading universe in
+                        # instruments/all.txt; there is no csi300 market file,
+                        # and the warehouse covers whatever was synced.
+                        "instruments": "all",
                         "infer_processors": [
                             {"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}},
                             {"class": "Fillna", "kwargs": {"fields_group": "feature"}},
@@ -214,13 +226,27 @@ class BacktestEngine:
                 "kwargs": {
                     "signal": (model, dataset),
                     "topk": topk,
-                    "n_drop": topk,
+                    # Deliberately non-zero: n_drop=0 trips qlib's [-0:] sell
+                    # edge and churns the whole book daily (see documents).
+                    "n_drop": max(1, topk),
                 },
             }
 
+            # Qlib steps through calendar positions of [start, end]; its loop
+            # resolves end+1, so an export ending exactly at `end_date` dies
+            # with IndexError. Back off one trading day.
+            bt_end = end_date
+            try:
+                from qlib.data import D as _D
+                cal_tail = _D.calendar(start_time=start_date, end_time=end_date)
+                if len(cal_tail) >= 2 and str(cal_tail[-1])[:10] == end_date:
+                    bt_end = str(cal_tail[-2])[:10]
+            except Exception:
+                pass
+
             report_normal, positions_normal = backtest_daily(
                 start_time=start_date,
-                end_time=end_date,
+                end_time=bt_end,
                 strategy=bt_strategy,
                 benchmark=benchmark,
             )
@@ -243,7 +269,7 @@ class BacktestEngine:
             logger.error("backtest_data_error", error=str(e))
             raise BacktestError(
                 f"回测数据为空或无效（{start_date} ~ {end_date}）。"
-                f"请检查日期范围内是否有交易数据，或运行 `python cli.py --init-data --force` 重新下载数据。",
+                f"请检查日期范围内是否有交易数据，或运行 `python cli.py --sync-data` 后 `python cli.py --export-qlib` 导出。",
                 details={"error_type": "data_error", "error": str(e)},
             ) from e
         except Exception as e:
@@ -303,6 +329,14 @@ class BacktestEngine:
 
             win_rate = float((returns > 0).sum() / len(returns))
 
+            # Turnover: Qlib reports the day-level churn rate of the strategy.
+            # Averaged, it is the natural "换手率" for the summary card.
+            turnover = 0.0
+            if hasattr(df, "columns") and "turnover" in df.columns:
+                turnover_series = df["turnover"].dropna()
+                if len(turnover_series) > 0:
+                    turnover = float(turnover_series.mean())
+
             return BacktestMetrics(
                 total_return=round(total_return, 4),
                 annualized_return=round(annualized_return, 4),
@@ -311,17 +345,19 @@ class BacktestEngine:
                 max_drawdown_duration=max_dd_duration,
                 volatility=round(volatility, 4),
                 win_rate=round(win_rate, 4),
-                turnover=0.0,
+                turnover=round(turnover, 4),
             )
+        except BacktestError:
+            raise
         except Exception as e:
+            # A silent all-zero scorecard is worse than an error: the caller
+            # (and the front-end card) cannot tell "the strategy made no money"
+            # apart from "the run broke". Surface it instead.
             logger.warning("metrics_parse_error", error=str(e))
-
-        # Fallback
-        return BacktestMetrics(
-            total_return=0.0, annualized_return=0.0, sharpe_ratio=0.0,
-            max_drawdown=0.0, max_drawdown_duration=0, volatility=0.0,
-            win_rate=0.0, turnover=0.0,
-        )
+            raise BacktestError(
+                f"回测指标解析失败：{e}",
+                details={"error": str(e), "error_type": "metrics_parse"},
+            ) from e
 
     def _parse_equity_curve(self, report_normal) -> list[dict]:
         """Parse Qlib report into equity curve data points."""

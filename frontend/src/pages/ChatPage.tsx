@@ -1,9 +1,20 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, memo } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { createChat, getChat, saveChat, listChatsSync, type ChatMessage } from '../utils/chatStore'
+
+// Optimized Markdown component with memo
+const MemoizedMarkdown = memo(({ content }: { content: string }) => (
+  <div className="text-sm leading-relaxed prose prose-invert max-w-none">
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      {content}
+    </ReactMarkdown>
+  </div>
+))
+
+MemoizedMarkdown.displayName = 'MemoizedMarkdown'
 
 const toolLabels: Record<string, string> = {
   _search_factors: '搜索因子',
@@ -101,15 +112,26 @@ function ChatSession({ chatId }: { chatId: string }) {
     }, 50)
   }, [messages, setMessages])
 
-  // Persist messages when they change
+  // Persist messages when they change (debounced)
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (messages.length > 0 && chatId) {
-      const msgs: ChatMessage[] = messages.map((m) => ({
-        id: m.id,
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      }))
-      saveChat(chatId, msgs)
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+      saveTimeoutRef.current = setTimeout(() => {
+        const msgs: ChatMessage[] = messages.map((m) => ({
+          id: m.id,
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }))
+        saveChat(chatId, msgs)
+      }, 500) // Debounce: 500ms
+    }
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
     }
   }, [messages, chatId])
 
@@ -117,15 +139,27 @@ function ChatSession({ chatId }: { chatId: string }) {
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
   const [userScrolledUp, setUserScrolledUp] = useState(false)
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Debounced scroll to bottom
   const scrollToBottom = useCallback(() => {
     if (!userScrolledUp) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+      scrollTimeoutRef.current = setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+      }, 100) // Debounce: 100ms
     }
   }, [userScrolledUp])
 
   useEffect(() => {
     scrollToBottom()
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+    }
   }, [messages, scrollToBottom])
 
   const handleScroll = useCallback(() => {
@@ -311,11 +345,7 @@ function ChatSession({ chatId }: { chatId: string }) {
 
                   {/* Text content with Markdown rendering */}
                   {msg.content && (
-                    <div className="text-sm leading-relaxed prose prose-invert max-w-none">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {msg.content}
-                      </ReactMarkdown>
-                    </div>
+                    <MemoizedMarkdown content={msg.content} />
                   )}
                 </div>
                 </div>

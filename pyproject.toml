@@ -11,20 +11,32 @@ dependencies = [
 
     # LLM
     "anthropic>=0.40.0",
+    "langchain-core>=0.3.0",      # imported directly by src/agent + src/llm_factory
+    "langchain-openai>=0.2.0",    # OpenAI-compatible providers (DeepSeek/Kimi/Qwen/GLM/...)
+    "langchain-ollama>=0.2.0",    # local Ollama provider
 
     # Agent
     "langgraph>=0.2.0",
     "langchain-anthropic>=0.3.0",
 
-    # Quant
-    "qlib>=0.9.0",
+    # Quant (PyPI distribution name is "pyqlib"; the import name is "qlib")
+    "pyqlib>=0.9.6",
+
+    # Optimization (used by src/core/param_optimizer.py)
+    "optuna>=3.0.0",
+
+    # Numerics (used by src/core/backtest_engine.py)
+    "pandas>=2.0.0",
+    "numpy>=1.26.0",
 
     # Market Data
     "pytdx>=1.72.0",  # primary: TDX protocol (pure Python)
     "baostock>=0.8.8",
+    "requests>=2.28.0",  # for EastMoney, THS, Sina APIs
 
     # Storage
     "chromadb>=0.5.0",
+    "duckdb>=1.0.0",  # local market-data warehouse (src/data/store.py)
 
     # API (Phase 1b)
     "fastapi>=0.115.0",
@@ -40,7 +52,7 @@ dev = [
 
 [build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]

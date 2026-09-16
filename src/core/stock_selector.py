@@ -124,19 +124,15 @@ class StockSelector:
         import qlib
         from qlib.data import D
 
-        # Ensure Qlib is initialized
-        try:
-            qlib.init(provider_uri=settings.qlib_data_path, region="cn")
-        except Exception:
-            pass
+        # Ensure Qlib is initialized against the shared dataset resolution.
+        from src.data.qlib_dataset import ensure_init
+
+        ensure_init()
 
         # Get instrument list
-        if universe == "csi300":
-            instruments = D.instruments("csi300")
-        elif universe == "csi500":
-            instruments = D.instruments("csi500")
-        else:
-            instruments = D.instruments("all")
+        # The exported dataset has no per-index market files; whatever was
+        # synced is the trading universe.
+        instruments = D.instruments("all")
 
         # Get stock list for the date
         stock_list = D.list_instruments(instruments=instruments, start_time=date, end_time=date, as_list=True)
