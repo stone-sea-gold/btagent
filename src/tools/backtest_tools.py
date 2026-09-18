@@ -15,16 +15,23 @@ def _get_error_action(error_type: str, details: dict) -> str:
         module = details.get("module", "unknown")
         return f"Qlib 模块 ({module}) 导入失败。请运行: pip install pyqlib"
     if error_type == "data_empty":
-        return "Qlib 数据为空。请运行: python cli.py --init-data --force"
+        return (
+            "Qlib 数据为空。请运行: python cli.py --sync-data --index csi300，"
+            "再 python cli.py --export-qlib 导出数据集。"
+        )
     if error_type == "date_out_of_range":
         data_end = details.get("data_end", "未知")
         data_start = details.get("data_start", "未知")
         return (
             f"日期超出数据范围。当前数据覆盖: {data_start} ~ {data_end}。"
-            f"请将回测日期调整到此范围内，或运行 python cli.py --init-data --force 更新数据。"
+            f"请将回测日期调整到此范围内，或运行 python cli.py --sync-data 同步后"
+            f"再 python cli.py --export-qlib 更新数据。"
         )
     if error_type == "data_error":
-        return "回测数据无效。请运行: python cli.py --init-data --force 重新下载数据。"
+        return (
+            "回测数据无效。请运行: python cli.py --sync-data 同步后"
+            "再 python cli.py --export-qlib 重新导出数据集。"
+        )
     if error_type == "runtime_error":
         return f"回测运行异常 ({details.get('exception_type', '')})。请检查日期范围和策略参数是否合理。"
     return "请检查回测参数是否正确，或查看后端日志获取详细信息。"

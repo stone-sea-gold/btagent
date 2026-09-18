@@ -61,18 +61,6 @@ class TradingCalendar:
 
     def __init__(self):
         self._holidays = _CHINESE_HOLIDAYS
-        self._qlib_calendar = None
-        self._data_coverage_end = None
-        self._try_load_qlib_calendar()
-
-    def _try_load_qlib_calendar(self):
-        """Try to load Qlib's trading calendar for more accurate data."""
-        try:
-            import qlib
-            from qlib.data import D
-            self._qlib_calendar = D
-        except Exception:
-            pass
 
     def get_data_coverage(self) -> dict:
         """Get the actual data coverage from Qlib.
@@ -127,8 +115,11 @@ class TradingCalendar:
             return {
                 "valid": False,
                 "requested_date": requested_date,
-                "message": "未找到 Qlib 数据。请先运行 `python cli.py --init-data` 下载数据。",
-                "recommendation": "init_data",
+                "message": (
+                    "本地没有 Qlib 数据集。请先运行 `python cli.py --sync-data` 同步行情，"
+                    "再 `python cli.py --export-qlib` 导出。"
+                ),
+                "recommendation": "sync_and_export",
             }
 
         if coverage["end_date"] is None:

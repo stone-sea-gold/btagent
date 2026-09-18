@@ -97,7 +97,6 @@ EXPECTED_INVENTORY = {
         "_fetch_hot_concept",
     ],
     "data": [
-        "_get_data_coverage",
         "_sync_market_data",
         "_export_qlib_dataset",
     ],
@@ -127,7 +126,7 @@ def registry():
 
 class TestInventory:
     def test_total_tool_count(self, registry):
-        assert len(registry) == 58
+        assert len(registry) == 57
 
     def test_domains_and_tools_match_snapshot(self, registry):
         assert registry.domains() == EXPECTED_INVENTORY
@@ -146,7 +145,7 @@ class TestInventory:
         bound = registry.bind()
         dispatch = registry.dispatch()
         assert [f.__name__ for f in bound] == list(dispatch)
-        assert len(bound) == 58
+        assert len(bound) == 57
 
     def test_domain_count(self, registry):
         assert len(registry.domain_names()) == 14

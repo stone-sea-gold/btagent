@@ -642,7 +642,7 @@ Qlib 靠「`$close` 缺失」判定停牌(见 Phase 2 记录)。600009 的 11 �
 
 1. `backtest_engine.py` 的 `qlib.init` 指向导出的本地数据目录
 2. 按附录 A 配置 `exchange_kwargs`,启用 A 股约束
-3. 新增 `src/agent/adapters/data.py`,暴露 `sync_market_data` / `get_data_coverage` 等工具
+3. 新增 `src/agent/adapters/data.py`,暴露 `sync_market_data` / `export_qlib_dataset` 等工具
 4. 用 `ToolRegistry` 的域级绑定能力,评估是否启用工具路由(55 个工具平铺已接近 LLM 选择能力上限)
 
 **验收标准**:
@@ -758,9 +758,13 @@ Phase 6bis 调参（topk 更大的 universe + 实际 alpha 模型）。
 |------|------|
 | `sync_market_data(index/codes/start/years/source)` | 从数据源同步行情+复权因子到仓库 |
 | `export_qlib_dataset(out_dir)` | 导出 Qlib bin 数据集（默认路径 + 指数不入交易域）|
-| `get_data_coverage()` | 仓库现状 + 引擎可用窗口 |
 
-工具面从 55 → **58 个工具 / 14 个域**（`test_agent_tool_surface` 锁定项已同步更新）。
+覆盖查询不在这里：它由日历域的 `check_data_coverage` 提供（见下），仓库统计已并入其返回。
+
+工具面从 55 → 58 个工具 / 14 个域。其中 `get_data_coverage` 与日历域既有的
+`check_data_coverage` 职责重复,模型需要在两个同名概念间自行猜测,后续已合并为单一
+`check_data_coverage`（并把仓库总量并入其返回），现为 **57 个工具 / 14 个域**，
+`test_agent_tool_surface` 锁定项已同步更新。
 
 ## 六、并行的质量修复项(不属数据层,但影响演示)
 

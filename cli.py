@@ -266,14 +266,23 @@ def sync_market_data(
 
 
 def export_qlib_data(
-    *, out: str, codes: str | None = None, start: str | None = None, end: str | None = None
+    *,
+    out: str | None = None,
+    codes: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
 ) -> int:
-    """Export the warehouse as a Qlib dataset the backtest engine can read."""
+    """Export the warehouse as a Qlib dataset the backtest engine can read.
+
+    ``out`` defaults to the directory the engine resolves, so ``--export-qlib``
+    works without a path.
+    """
     from datetime import date as _date
 
     from src.data.qlib_export import write_qlib_dataset
     from src.data.store import MarketStore
 
+    target = out or settings.qlib_export_path
     window_start = _date.fromisoformat(start) if start else None
     window_end = _date.fromisoformat(end) if end else None
     selected = [c.strip() for c in codes.split(",") if c.strip()] if codes else None
@@ -282,13 +291,13 @@ def export_qlib_data(
         excluded = [] if selected else [settings.benchmark_code]
         with MarketStore() as store:
             counts = write_qlib_dataset(
-                store, out, selected, window_start, window_end,
+                store, target, selected, window_start, window_end,
                 exclude_from_universe=excluded,
             )
     except AIFundError as exc:
         print(f"导出失败：{exc.message}")
         return 1
-    print(f"已导出 Qlib 数据集 → {out}")
+    print(f"已导出 Qlib 数据集 → {target}")
     print(
         f"  交易域 {counts['instruments']} 只 · 特征文件 {counts['features']} 只 · "
         f"{counts['days']} 个交易日 · {counts['fields']} 个字段"
@@ -313,12 +322,19 @@ def main():
     data.add_argument("--no-resume", action="store_true", help="忽略已同步区间，强制重新拉取")
     data.add_argument("--no-factors", action="store_true", help="不拉取复权因子")
     exp = parser.add_argument_group("Qlib 数据集导出")
-    exp.add_argument("--export-qlib", type=str, metavar="OUT_DIR", help="将仓库行情导出为 Qlib bin 数据集")
+    exp.add_argument(
+        "--export-qlib",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="OUT_DIR",
+        help="将仓库行情导出为 Qlib bin 数据集（省略 OUT_DIR 时导出到默认目录）",
+    )
     args = parser.parse_args()
 
-    if args.export_qlib:
+    if args.export_qlib is not None:
         return export_qlib_data(
-            out=args.export_qlib, codes=args.codes, start=args.start, end=args.end
+            out=args.export_qlib or None, codes=args.codes, start=args.start, end=args.end
         )
     if args.sync_data:
         return sync_market_data(

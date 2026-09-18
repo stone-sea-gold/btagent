@@ -155,7 +155,8 @@ class BacktestEngine:
                 raise BacktestError(
                     f"回测结束日期 {end_date} 超出数据范围。"
                     f"当前数据覆盖 {data_start} ~ {data_end}。"
-                    f"请将结束日期改为 {data_end} 或更早，或运行 `python cli.py --init-data --force` 更新数据。",
+                    f"请将结束日期改为 {data_end} 或更早，或运行 `python cli.py --sync-data` "
+                    f"同步并 `python cli.py --export-qlib` 导出更新数据。",
                     details={
                         "error_type": "date_out_of_range",
                         "data_start": data_start,

@@ -4,7 +4,7 @@
 
 ## 特性
 
-- **🤖 Agent-native 架构** — LangGraph 编排的 AI Agent 拥有 58 个工具、14 个能力域，自动执行复杂量化任务
+- **🤖 Agent-native 架构** — LangGraph 编排的 AI Agent 拥有 57 个工具、14 个能力域，自动执行复杂量化任务
 - **🔍 因子管理** — 搜索内置因子库（109+ 因子），或创建自定义因子
 - **📈 策略构建与回测** — 组合因子构建策略，一键回测并获取夏普比率、最大回撤等指标
 - **💾 策略持久化** — SQLite + ChromaDB 双存储，支持语义搜索和版本链
@@ -141,7 +141,7 @@ AIFUND5/
 │   │   ├── registry.py         # 工具注册表：工具面的唯一真实来源
 │   │   ├── deps.py             # AgentDeps：工具闭包捕获的业务服务
 │   │   ├── state.py            # AgentState 状态定义
-│   │   ├── adapters/           # 58 个工具适配器，按 14 个能力域拆分
+│   │   ├── adapters/           # 57 个工具适配器，按 14 个能力域拆分
 │   │   │   ├── factor.py       #   因子检索 / 创建
 │   │   │   ├── strategy.py     #   策略组合
 │   │   │   ├── backtest.py     #   回测执行 / 分析
@@ -237,7 +237,7 @@ Agent 层是一个 **单 Agent + ReAct 工具循环**，刻意保持轻薄：
 | `agent/graph.py` | 只做编排：拼装 LLM、系统提示词与两节点循环 |
 | `agent/registry.py` | **工具面的唯一真实来源**；bind 列表与 dispatch 表都由注册结果派生 |
 | `agent/deps.py` | `AgentDeps`，工具闭包捕获的业务服务 |
-| `agent/adapters/` | 58 个工具适配器，按 14 个能力域分文件 |
+| `agent/adapters/` | 57 个工具适配器，按 14 个能力域分文件 |
 | `agent/state.py` | `AgentState`：`messages` 与 `tool_call_log` 带 reducer 追加，两个上下文字段保存最新值 |
 
 设计要点：
@@ -246,11 +246,11 @@ Agent 层是一个 **单 Agent + ReAct 工具循环**，刻意保持轻薄：
 - **适配器即普通函数** —— 装饰器原样返回函数，LangChain 仍从 `__name__` / `__doc__` / 类型注解推导工具名、描述与参数 schema。
 - **注册顺序即工具顺序** —— 交给模型的工具顺序稳定可复现。
 - **业务逻辑与 Agent 解耦** —— `src/tools/` `src/core/` 不依赖 Agent，可独立测试；适配器只负责 JSON 出入参的转接。
-- **按能力域绑定（可选）** —— `create_agent_graph(..., domains=["factor", "backtest"])` 可只暴露部分能力域，缩小交给模型的工具集；默认仍然暴露全部 55 个。
+- **按能力域绑定（可选）** —— `create_agent_graph(..., domains=["factor", "backtest"])` 可只暴露部分能力域，缩小交给模型的工具集；默认仍然暴露全部 57 个。
 
 ## Agent 工具清单
 
-AI Agent 配备了 **58 个工具**，分为 **14 个能力域**（下表工具名省略 `_` 前缀）：
+AI Agent 配备了 **57 个工具**，分为 **14 个能力域**（下表工具名省略 `_` 前缀）：
 
 | 域 | 数量 | 工具 |
 |----|------|------|
@@ -266,7 +266,7 @@ AI Agent 配备了 **58 个工具**，分为 **14 个能力域**（下表工具�
 | 📉 行情数据 | 7 | `fetch_stock_quote`, `fetch_stock_hist`, `fetch_financial_summary`, `fetch_sector_flow`, `fetch_quarterly_financials`, `fetch_industry_stocks`, `fetch_index_constituents` |
 | 📑 研报估值 | 4 | `fetch_stock_reports`, `fetch_industry_reports`, `fetch_eps_forecast`, `fetch_valuation` |
 | 🔥 资金信号 | 12 | `fetch_northbound_flow`, `fetch_concept_blocks`, `fetch_fund_flow`, `fetch_fund_flow_120d`, `fetch_dragon_tiger`, `fetch_daily_dragon_tiger`, `fetch_lockup_expiry`, `fetch_industry_ranking`, `fetch_margin_trading`, `fetch_block_trade`, `fetch_holder_change`, `fetch_dividend_history` |
-| 🗄️ 数据仓库 | 3 | `sync_market_data`, `export_qlib_dataset`, `get_data_coverage` |
+| 🗄️ 数据仓库 | 2 | `sync_market_data`, `export_qlib_dataset` |
 | 📰 新闻公告 | 7 | `fetch_stock_news`, `fetch_market_telegraph`, `fetch_global_news`, `fetch_announcements`, `fetch_hot_list`, `fetch_hot_rank`, `fetch_hot_concept` |
 
 工具清单由 `tests/test_agent_tool_surface.py` 逐项锁定，改动工具面会直接让测试失败。
@@ -340,12 +340,12 @@ python cli.py
 # 指定 session
 python cli.py --session <session_id>
 
-# 初始化数据
-python cli.py --init-data
-
 # 同步行情到本地仓库（自建数据层）
 python cli.py --sync-data --codes 600519.SH,600009.SH,000001.SZ --years 1
 python cli.py --sync-data --index csi300 --years 1
+
+# 导出 Qlib 数据集供回测引擎读取（省略目录则用默认路径）
+python cli.py --export-qlib
 ```
 
 CLI 内置命令：`/new`（新会话）、`/sessions`（列出会话）、`/switch <id>`（切换会话）、`quit`（退出）。

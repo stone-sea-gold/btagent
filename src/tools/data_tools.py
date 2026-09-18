@@ -1,6 +1,7 @@
 """Data coverage tools for the Agent."""
 
 import json
+from pathlib import Path
 
 from src.core.trading_calendar import TradingCalendar
 from src.exceptions import BacktestError
@@ -9,6 +10,38 @@ from src.logging import get_logger
 logger = get_logger("data_tools")
 
 _calendar = TradingCalendar()
+
+
+def _warehouse_summary() -> dict:
+    """What the local warehouse holds, for the coverage report.
+
+    ``MarketStore.coverage`` returns ``date`` objects, so they are stringified
+    here: this payload is JSON for the model, and a raw ``date`` is not
+    serializable.  The existence check keeps a diagnostic read from creating the
+    database file as a side effect.
+    """
+    from src.config import settings
+    from src.data.store import MarketStore
+
+    if not Path(settings.market_data_db).exists():
+        return {"status": "no_warehouse"}
+
+    try:
+        with MarketStore() as store:
+            report = store.coverage()
+    except Exception as e:  # noqa: BLE001 - the report must survive a bad store
+        logger.error("warehouse_coverage_error", error=str(e))
+        return {"status": "error", "error": str(e)}
+
+    first, last = report["first_date"], report["last_date"]
+    return {
+        "bars": report["bars"],
+        "codes": report["codes"],
+        "first_date": first.isoformat() if first else None,
+        "last_date": last.isoformat() if last else None,
+        "factor_rows": report["factor_rows"],
+        "calendar_days": report["calendar_days"],
+    }
 
 
 def check_data_coverage() -> str:
@@ -38,6 +71,9 @@ def check_data_coverage() -> str:
             "is_stale": coverage.get("is_stale", True),
             "days_behind": coverage.get("days_behind"),
             "status": coverage.get("status", "unknown"),
+            # The warehouse totals sit alongside the dataset window so one call
+            # answers "what data do we actually have?".
+            "warehouse": _warehouse_summary(),
         }
 
         if coverage.get("is_stale"):

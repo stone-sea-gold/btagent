@@ -66,14 +66,6 @@ def tools(monkeypatch, store_record) -> dict[str, Callable[..., str]]:
         def record_sync(self, code, freq, start, end, rows_written: int) -> None:
             return None
 
-        def coverage(self) -> dict[str, Any]:
-            return {
-                "bars": 74_000,
-                "codes": 298,
-                "first_date": "2020-01-02",
-                "last_date": "2024-12-31",
-            }
-
     class FakeProvider:
         name = "fake"
 
@@ -106,15 +98,6 @@ def tools(monkeypatch, store_record) -> dict[str, Callable[..., str]]:
 
 def _reshape(payload: str) -> dict[str, Any]:
     return json.loads(payload)
-
-
-class TestGetCoverage:
-    def test_reports_what_the_warehouse_holds(self, tools):
-        payload = _reshape(tools["_get_data_coverage"]())
-
-        assert payload["status"] == "success"
-        assert payload["bars"] == 74_000
-        assert payload["first_date"] == "2020-01-02"
 
 
 class TestSyncTool:

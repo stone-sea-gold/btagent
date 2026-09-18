@@ -1,8 +1,9 @@
 """Market-data synchronization adapters.
 
 These let the agent run the warehouse pipeline (sync from a data source, export
-the Qlib dataset, check what the warehouse currently holds) as part of a
-conversation, instead of requiring the user to step out to a shell.
+the Qlib dataset) as part of a conversation, instead of requiring the user to
+step out to a shell.  Coverage reporting lives in the calendar domain, where the
+date-handling flow already depends on it.
 """
 
 from __future__ import annotations
@@ -36,22 +37,6 @@ def _resolve_window(
 
 def register(registry: ToolRegistry, deps: AgentDeps) -> None:
     """Register market-data tools."""
-
-    @registry.tool(DOMAIN)
-    def _get_data_coverage() -> str:
-        """Report what the local warehouse holds and whether it is stale."""
-        from src.data.store import MarketStore
-
-        with MarketStore() as store:
-            report = store.coverage()
-        report["engine_window"] = {}
-        try:
-            from src.data.qlib_dataset import coverage as dataset_coverage
-
-            report["engine_window"] = dataset_coverage()
-        except Exception:  # noqa: BLE001 - absence is a reportable fact
-            report["engine_window"] = {"status": "no dataset exported"}
-        return _ok(**report)
 
     @registry.tool(DOMAIN)
     def _sync_market_data(
