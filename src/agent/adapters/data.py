@@ -111,7 +111,7 @@ def register(registry: ToolRegistry, deps: AgentDeps) -> None:
                 store, target, exclude_from_universe=[settings.benchmark_code]
             )
         return _ok(
-            out_dir=str(out_dir),
+            out_dir=str(target),
             instruments=counts["instruments"],
             features=counts["features"],
             days=counts["days"],

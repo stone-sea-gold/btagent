@@ -6,8 +6,11 @@ import remarkGfm from 'remark-gfm'
 import { createChat, getChat, saveChat, listChatsSync, type ChatMessage } from '../utils/chatStore'
 
 // Optimized Markdown component with memo
+// `break-words` wraps long unbreakable tokens (URLs, JSON, digit runs) that
+// would otherwise run past the bubble edge, and `overflow-x-auto` lets wide
+// tables scroll inside the bubble instead of spilling out of it.
 const MemoizedMarkdown = memo(({ content }: { content: string }) => (
-  <div className="text-sm leading-relaxed prose prose-invert max-w-none">
+  <div className="text-sm leading-relaxed prose prose-invert max-w-none break-words overflow-x-auto">
     <ReactMarkdown remarkPlugins={[remarkGfm]}>
       {content}
     </ReactMarkdown>

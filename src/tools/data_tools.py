@@ -3,6 +3,7 @@
 import json
 
 from src.core.trading_calendar import TradingCalendar
+from src.exceptions import BacktestError
 from src.logging import get_logger
 
 logger = get_logger("data_tools")
@@ -17,6 +18,18 @@ def check_data_coverage() -> str:
         JSON with data coverage info and staleness warning.
     """
     try:
+        # Qlib keeps one module-global provider, so this read has to initialize
+        # it rather than depend on whichever caller happened to run first.
+        # Without this, the same request reports no_data on a cold process and
+        # success once any other qlib-backed endpoint has been hit.
+        from src.data.qlib_dataset import ensure_init
+
+        try:
+            ensure_init()
+        except BacktestError:
+            # No exported dataset yet — the report below says so plainly.
+            pass
+
         coverage = _calendar.get_data_coverage()
 
         result = {
@@ -31,7 +44,8 @@ def check_data_coverage() -> str:
             result["warning"] = (
                 f"数据滞后 {coverage.get('days_behind', '?')} 天。"
                 f"最新数据截至 {coverage.get('end_date', '未知')}。"
-                f"如需使用最新数据，请运行 `python cli.py --init-data` 更新。"
+                f"如需使用最新数据，请运行 `python cli.py --sync-data` 同步后"
+                f"再 `python cli.py --export-qlib` 导出。"
             )
 
         return json.dumps(result, ensure_ascii=False, indent=2)
