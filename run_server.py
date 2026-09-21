@@ -5,54 +5,113 @@ Usage:
     python run_server.py --port 8001  # Start on custom port
     python run_server.py --kill       # Kill running server and exit
 
-Automatically kills any existing process occupying the port before starting.
+Frees the port before starting. Port lookup is platform-aware: Windows ships
+``netstat``/``taskkill``, while Linux images usually ship ``lsof`` and ``ss``
+instead — ``netstat`` is frequently absent, which previously made this script's
+port check a silent no-op on Linux.
 """
 
 import argparse
+import os
+import re
+import signal
 import subprocess
 import sys
+import time
+
+WINDOWS = sys.platform == "win32"
 
 
-def find_pid_on_port(port: int) -> int | None:
-    """Find the PID of the process listening on the given port."""
+def _stdout_of(command: list[str]) -> str:
+    """Output of ``command``, or ``""`` when the tool is missing or fails."""
     try:
         result = subprocess.run(
-            ["netstat", "-ano"],
-            capture_output=True, text=True, timeout=5,
+            command, capture_output=True, text=True, timeout=5, check=False
         )
-        for line in result.stdout.splitlines():
-            if f":{port}" in line and "LISTENING" in line:
-                parts = line.split()
-                pid = int(parts[-1])
-                if pid > 0:
-                    return pid
-    except Exception:
-        pass
-    return None
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout
+
+
+def _describe(pid: int) -> str:
+    """A short command line for ``pid``, so the user sees what will be killed."""
+    if WINDOWS:
+        return ""
+    return _stdout_of(["ps", "-p", str(pid), "-o", "args="]).strip()[:90]
+
+
+def find_pids_on_port(port: int) -> list[int]:
+    """PIDs listening on ``port``, best effort for the current platform."""
+    if WINDOWS:
+        pids = set()
+        for line in _stdout_of(["netstat", "-ano"]).splitlines():
+            parts = line.split()
+            # Proto  Local Address  Foreign Address  State  PID
+            if (
+                len(parts) >= 5
+                and parts[-2] == "LISTENING"
+                and f":{port}" in parts[1]
+                and parts[-1].isdigit()
+            ):
+                pids.add(int(parts[-1]))
+        return sorted(pids)
+
+    # lsof prints bare PIDs; ss is the fallback when lsof is unavailable. The ss
+    # query must carry the port filter: an unfiltered `ss -ltnp` lists every
+    # socket, so scanning it for `pid=` could return a different port's process.
+    listed = _stdout_of(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"]).split()
+    pids = {int(item) for item in listed if item.isdigit()}
+    if pids:
+        return sorted(pids)
+    filtered = _stdout_of(["ss", "-ltnp", f"sport = :{port}"])
+    return sorted({int(m) for m in re.findall(r"pid=(\d+)", filtered)})
 
 
 def kill_process(pid: int) -> bool:
-    """Kill a process by PID."""
+    """Terminate ``pid``, reporting whether the request was accepted."""
     try:
-        subprocess.run(
-            ["taskkill", "/F", "/PID", str(pid)],
-            capture_output=True, timeout=5,
-        )
-        return True
-    except Exception:
+        if WINDOWS:
+            subprocess.run(
+                ["taskkill", "/F", "/PID", str(pid)],
+                capture_output=True,
+                timeout=5,
+                check=False,
+            )
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except (OSError, subprocess.SubprocessError):
         return False
+    return True
 
 
 def free_port(port: int) -> None:
-    """Kill any process listening on the given port."""
-    pid = find_pid_on_port(port)
-    if pid is not None:
-        print(f"  端口 {port} 被进程 PID {pid} 占用，正在释放...")
+    """Stop whatever listens on ``port`` and wait for the socket to actually close.
+
+    The kernel releases a port when its process exits, so the wait matters:
+    binding immediately after the signal can still race a listener that has not
+    finished shutting down.
+    """
+    pids = find_pids_on_port(port)
+    if not pids:
+        return
+
+    print(f"  端口 {port} 被进程 {', '.join(map(str, pids))} 占用，正在释放...")
+    for pid in pids:
+        command = _describe(pid)
+        if command:
+            print(f"    PID {pid}: {command}")
         if kill_process(pid):
             print(f"  已终止进程 {pid}")
         else:
             print(f"  无法终止进程 {pid}，请手动关闭")
             sys.exit(1)
+
+    for _ in range(50):
+        time.sleep(0.1)
+        if not find_pids_on_port(port):
+            return
+    print(f"  端口 {port} 仍被占用，请手动关闭")
+    sys.exit(1)
 
 
 def main():
