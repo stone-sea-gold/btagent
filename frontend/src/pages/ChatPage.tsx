@@ -73,6 +73,16 @@ export default function ChatPage() {
   return <ChatSession key={chatId} chatId={chatId} />
 }
 
+/** The shape persisted for a chat. Tool invocations are not stored, so the
+ * fingerprint used to detect real changes is built from these fields only. */
+function toSavedMessages(messages: { id: string; role: string; content: string }[]): ChatMessage[] {
+  return messages.map((m) => ({
+    id: m.id,
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+  }))
+}
+
 /** Inner session — re-mounts whenever chatId changes, so useChat starts clean. */
 function ChatSession({ chatId }: { chatId: string }) {
   const navigate = useNavigate()
@@ -115,28 +125,42 @@ function ChatSession({ chatId }: { chatId: string }) {
     }, 50)
   }, [messages, setMessages])
 
-  // Persist messages when they change (debounced)
+  // Persist messages when they actually change (debounced). Seeding the
+  // fingerprint from the loaded record means merely opening a chat no longer
+  // rewrites it — that used to bump `updated_at` and reshuffle the history list.
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedRef = useRef<string>(JSON.stringify(toSavedMessages(initialMessages)))
+  const pendingRef = useRef<ChatMessage[] | null>(null)
+
   useEffect(() => {
-    if (messages.length > 0 && chatId) {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current)
-      }
-      saveTimeoutRef.current = setTimeout(() => {
-        const msgs: ChatMessage[] = messages.map((m) => ({
-          id: m.id,
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        }))
-        saveChat(chatId, msgs)
-      }, 500) // Debounce: 500ms
+    if (messages.length === 0 || !chatId) return
+
+    const msgs = toSavedMessages(messages)
+    const fingerprint = JSON.stringify(msgs)
+    if (fingerprint === lastSavedRef.current) return
+
+    pendingRef.current = msgs
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
     }
+    saveTimeoutRef.current = setTimeout(() => {
+      saveChat(chatId, msgs)
+      lastSavedRef.current = fingerprint
+      pendingRef.current = null
+    }, 500) // Debounce: 500ms
+
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
     }
   }, [messages, chatId])
+
+  // Flush a pending debounce on unmount, so switching chats or leaving the page
+  // cannot drop the tail of a reply that arrived within the debounce window.
+  useEffect(() => () => {
+    if (pendingRef.current) saveChat(chatId, pendingRef.current)
+  }, [chatId])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)

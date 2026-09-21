@@ -30,15 +30,39 @@ class ChatStore:
                 id TEXT PRIMARY KEY,
                 title TEXT DEFAULT '',
                 messages_json TEXT DEFAULT '[]',
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
+                created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+                updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
             );
         """)
+        self._migrate_timestamps()
         self._conn.commit()
+
+    def _migrate_timestamps(self) -> None:
+        """Rewrite pre-existing ``datetime('now')`` values as ISO-8601 UTC.
+
+        ``datetime('now')`` produces ``YYYY-MM-DD HH:MM:SS`` with no zone marker,
+        which JavaScript parses as *local* time: every stored timestamp rendered
+        eight hours early, and mixing those strings with the frontend's ISO
+        values sorted the history list incorrectly. Appending the marker makes
+        the values unambiguous, and the WHERE guard keeps this idempotent.
+        """
+        self._conn.execute(
+            """
+            UPDATE chats SET
+              created_at = CASE WHEN created_at NOT LIKE '%T%'
+                                THEN replace(created_at, ' ', 'T') || 'Z'
+                                ELSE created_at END,
+              updated_at = CASE WHEN updated_at NOT LIKE '%T%'
+                                THEN replace(updated_at, ' ', 'T') || 'Z'
+                                ELSE updated_at END
+            WHERE created_at NOT LIKE '%T%' OR updated_at NOT LIKE '%T%'
+            """
+        )
 
     def list_chats(self) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT id, title, created_at, updated_at, length(messages_json) as msg_size FROM chats ORDER BY updated_at DESC"
+            "SELECT id, title, messages_json, created_at, updated_at "
+            "FROM chats ORDER BY updated_at DESC"
         ).fetchall()
         return [
             {
@@ -46,7 +70,8 @@ class ChatStore:
                 "title": r["title"],
                 "createdAt": r["created_at"],
                 "updatedAt": r["updated_at"],
-                "messageCount": max(1, r["msg_size"] // 100),  # rough estimate
+                # A real count: the previous size/100 estimate was meaningless.
+                "messageCount": len(json.loads(r["messages_json"])),
             }
             for r in rows
         ]
@@ -76,11 +101,11 @@ class ChatStore:
         messages_json = json.dumps(messages, ensure_ascii=False)
         self._conn.execute(
             """INSERT INTO chats (id, title, messages_json, updated_at)
-               VALUES (?, ?, ?, datetime('now'))
+               VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))
                ON CONFLICT(id) DO UPDATE SET
                  title=excluded.title,
                  messages_json=excluded.messages_json,
-                 updated_at=datetime('now')""",
+                 updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')""",
             (chat_id, title, messages_json),
         )
         self._conn.commit()

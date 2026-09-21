@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { listChats, deleteChat, type ChatRecord } from '../utils/chatStore'
+import { listChats, deleteChat, parseTimestamp, type ChatRecord } from '../utils/chatStore'
+
+/** Render a stored timestamp; parsing is shared with the sort so both agree. */
+function formatTime(value: string | undefined): string {
+  const ms = parseTimestamp(value)
+  return ms ? new Date(ms).toLocaleString('zh-CN') : '时间未知'
+}
 
 export default function HistoryPage() {
   const [chats, setChats] = useState<ChatRecord[]>([])
@@ -57,7 +63,7 @@ export default function HistoryPage() {
                     {chat.title}
                   </p>
                   <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                    共 {chat.messages.length} 条消息 · {new Date(chat.updatedAt).toLocaleString('zh-CN')}
+                    共 {chat.messages.length} 条消息 · {formatTime(chat.updatedAt)}
                   </p>
                 </div>
                 <button

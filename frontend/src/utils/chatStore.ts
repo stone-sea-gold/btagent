@@ -41,6 +41,28 @@ async function fetchBackend<T>(url: string, init?: RequestInit): Promise<T> {
 
 // ── Public API ──────────────────────────────────────────────────
 
+/** Parse a stored timestamp, tolerating both the legacy and the ISO shape.
+ *
+ * The backend used to write `YYYY-MM-DD HH:MM:SS` — UTC, but with no zone
+ * marker — which JavaScript parses as *local* time. That rendered every time
+ * eight hours early and scrambled the ordering once such values were mixed with
+ * `toISOString()` ones in the cache. Legacy strings are therefore tagged as UTC
+ * before parsing; ISO values pass straight through.
+ */
+export function parseTimestamp(value: string | undefined): number {
+  if (!value) return 0
+  const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+    ? `${value.replace(' ', 'T')}Z`
+    : value
+  const ms = new Date(iso).getTime()
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+/** Most recently updated first. */
+function byRecency(a: ChatRecord, b: ChatRecord): number {
+  return parseTimestamp(b.updatedAt) - parseTimestamp(a.updatedAt)
+}
+
 export async function listChats(): Promise<ChatRecord[]> {
   // Try backend first, fall back to cache
   try {
@@ -53,15 +75,15 @@ export async function listChats(): Promise<ChatRecord[]> {
       } catch { /* skip */ }
     }
     writeCache(full)
-    return full.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    return full.sort(byRecency)
   } catch {
-    return loadCache().sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    return loadCache().sort(byRecency)
   }
 }
 
 /** Synchronous version for initial render (uses cache only). */
 export function listChatsSync(): ChatRecord[] {
-  return loadCache().sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+  return loadCache().sort(byRecency)
 }
 
 export function getChat(id: string): ChatRecord | null {
