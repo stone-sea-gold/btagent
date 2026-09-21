@@ -56,7 +56,10 @@ def pipeline(monkeypatch) -> dict:
         return {"days": 1212}
 
     monkeypatch.setattr(sync_jobs, "MarketStore", _FakeStore)
+    # ``PROVIDERS`` backs the early source validation; ``get_provider`` is what
+    # the worker actually syncs with now that sessions are shared.
     monkeypatch.setattr(sync_jobs, "PROVIDERS", {"fake": lambda: "provider"})
+    monkeypatch.setattr(sync_jobs, "get_provider", lambda name: "provider")
     monkeypatch.setattr(
         sync_jobs, "resolve_codes", lambda p, index=None, codes=None: list(CODES)
     )

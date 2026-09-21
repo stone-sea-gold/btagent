@@ -78,10 +78,14 @@ exact scaling convention Qlib expects is a separate calibration step.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import functools
+import socket
+import threading
+from collections.abc import Callable, Iterable
 from datetime import date, datetime
-from typing import Any, Self
+from typing import Any, Self, TypeVar
 
+from src.config import settings
 from src.data.codes import parse
 from src.data.derive import enforce_monotonic_chain
 from src.data.provider import Capability, DataProvider
@@ -199,12 +203,38 @@ def _factor_on(actions: list[tuple[date, float]], day: date) -> float:
     return factor
 
 
+T = TypeVar("T")
+
+
+def _reconnect_once(method: Callable[..., T]) -> Callable[..., T]:
+    """Retry a query once after re-establishing a dropped session.
+
+    Providers are shared process-wide — see :func:`src.data.providers.get_provider`
+    — and BaoStock can drop a session between syncs. Without this, one dropped
+    session would make every later sync fail until the process restarted.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> T:
+        self._login()
+        try:
+            return method(self, *args, **kwargs)
+        except DataSourceError:
+            logger.warning("baostock_session_dropped", method=method.__name__)
+            self.close()
+            self._login()
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class BaoStockProvider(DataProvider):
     """Daily market data from BaoStock.
 
-    The underlying library keeps module-global session state, so a provider
-    instance owns one login. Use it as a context manager, or call
-    :meth:`close` when finished.
+    The underlying library keeps module-global session state, so an instance owns
+    one login. Instances are shared process-wide via
+    :func:`src.data.providers.get_provider`; :meth:`close` therefore belongs to
+    shutdown, not to the end of a single sync.
     """
 
     name = "baostock"
@@ -212,6 +242,9 @@ class BaoStockProvider(DataProvider):
     def __init__(self, *, max_attempts: int = 3) -> None:
         self._max_attempts = max_attempts
         self._logged_in = False
+        # Login mutates module-global SDK state, so concurrent callers on the
+        # shared instance must not both run it.
+        self._session_lock = threading.Lock()
 
     # ── session ────────────────────────────────────────────────────
 
@@ -229,14 +262,30 @@ class BaoStockProvider(DataProvider):
         bs = self._bs()
         if self._logged_in:
             return bs
-        result = bs.login()
-        if result.error_code != "0":
-            raise DataSourceError(
-                f"baostock login failed: {result.error_msg}",
-                {"error_code": result.error_code},
-            )
-        self._logged_in = True
-        return bs
+
+        with self._session_lock:
+            if self._logged_in:  # another caller established it first
+                return bs
+
+            # The SDK sets no socket timeout, so a stalled server blocks forever
+            # instead of failing. A default timeout applies only to sockets
+            # created while it is in effect, which is exactly the login
+            # connection that later queries reuse.
+            previous = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(settings.data_login_timeout)
+            try:
+                result = bs.login()
+            finally:
+                socket.setdefaulttimeout(previous)
+
+            if result is None or result.error_code != "0":
+                raise DataSourceError(
+                    f"baostock login failed: "
+                    f"{'no response' if result is None else result.error_msg}",
+                    {"error_code": getattr(result, "error_code", "no_response")},
+                )
+            self._logged_in = True
+            return bs
 
     def close(self) -> None:
         """Log out, releasing the session."""
@@ -289,6 +338,7 @@ class BaoStockProvider(DataProvider):
 
     # ── bars ───────────────────────────────────────────────────────
 
+    @_reconnect_once
     def get_bars(
         self,
         code: str,
@@ -349,6 +399,7 @@ class BaoStockProvider(DataProvider):
 
     # ── factors ────────────────────────────────────────────────────
 
+    @_reconnect_once
     def get_factors(self, code: str, start: date, end: date) -> list[AdjustFactor]:
         """Return the back-adjustment factor for every trading day in range.
 
@@ -408,6 +459,7 @@ class BaoStockProvider(DataProvider):
 
     # ── calendar ───────────────────────────────────────────────────
 
+    @_reconnect_once
     def get_calendar(self, start: date, end: date, freq: Freq = Freq.DAY) -> list[datetime]:
         """Fetch the trading calendar. Daily and intraday share one calendar."""
         self.require(Capability.CALENDAR, freq)
@@ -435,6 +487,7 @@ class BaoStockProvider(DataProvider):
             {"provider": self.name},
         )
 
+    @_reconnect_once
     def get_index_constituents(self, index: str) -> list[str]:
         """Return the canonical codes making up an index.
 
@@ -461,6 +514,7 @@ class BaoStockProvider(DataProvider):
         rows = self._drain(result, endpoint, index)
         return [parse(row["code"]).symbol for row in rows]
 
+    @_reconnect_once
     def resolve_listing_spans(self, codes: Iterable[str]) -> list[Instrument]:
         """Resolve listing spans for an explicit, bounded set of codes.
 
