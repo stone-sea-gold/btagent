@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
+from langchain_core.callbacks.manager import dispatch_custom_event
 from langchain_core.messages import SystemMessage, ToolMessage
 from langgraph.graph import END, StateGraph
 
@@ -38,6 +39,13 @@ from src.logging import get_logger, new_session_id
 from src.tools.storage_tools import StrategyStore
 
 logger = get_logger(__name__)
+
+# Tool activity is broadcast as custom stream events because the adapters are
+# plain functions invoked directly: LangChain only emits on_tool_start /
+# on_tool_end for ``BaseTool`` runs, so without these the SSE layer has nothing
+# to forward and long tool calls look like a frozen page.
+TOOL_START_EVENT = "aifund_tool_start"
+TOOL_END_EVENT = "aifund_tool_end"
 
 # Module-level LLM cache — shared across graph instances
 _llm_cache: dict = {"key": None, "instance": None}
@@ -192,15 +200,20 @@ def create_agent_graph(
 
     # ── Graph nodes ────────────────────────────────────────────────
 
-    def agent_node(state: AgentState) -> dict:
-        """Main agent node — calls LLM with tools."""
+    async def agent_node(state: AgentState) -> dict:
+        """Main agent node — calls LLM with tools.
+
+        Async on purpose: a sync node runs in a worker thread and its streaming
+        callbacks only reach ``astream_events`` near completion, which collapsed
+        a whole answer into one burst at the end instead of streaming it.
+        """
         messages = state["messages"]
 
         if not messages or not isinstance(messages[0], SystemMessage):
             messages = [SystemMessage(content=system_prompt)] + messages
 
         try:
-            response = _get_llm(tools).invoke(messages)
+            response = await _get_llm(tools).ainvoke(messages)
             _normalize_content(response)
             logger.info(
                 "agent_llm_response",
@@ -235,6 +248,10 @@ def create_agent_graph(
 
             logger.info("tool_call_start", tool=tool_name, args=tool_args)
             start = time.monotonic()
+            dispatch_custom_event(
+                TOOL_START_EVENT,
+                {"toolCallId": tool_call_id, "toolName": tool_name, "args": tool_args},
+            )
 
             try:
                 func = dispatch.get(tool_name)
@@ -248,6 +265,10 @@ def create_agent_graph(
                 duration_ms = round((time.monotonic() - start) * 1000, 1)
                 logger.info("tool_call_complete", tool=tool_name, duration_ms=duration_ms)
                 results.append(ToolMessage(content=str(output), tool_call_id=tool_call_id))
+                dispatch_custom_event(
+                    TOOL_END_EVENT,
+                    {"toolCallId": tool_call_id, "result": str(output)},
+                )
                 log_entries.append(
                     {"tool": tool_name, "ok": True, "duration_ms": duration_ms}
                 )
@@ -264,6 +285,10 @@ def create_agent_graph(
                     duration_ms=duration_ms,
                 )
                 results.append(ToolMessage(content=f"Error: {e}", tool_call_id=tool_call_id))
+                dispatch_custom_event(
+                    TOOL_END_EVENT,
+                    {"toolCallId": tool_call_id, "result": f"Error: {e}"},
+                )
                 log_entries.append(
                     {
                         "tool": tool_name,

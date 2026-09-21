@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 @router.get("/search")
-async def search_factors_endpoint(q: str, limit: int = 5):
+def search_factors_endpoint(q: str, limit: int = 5):
     """Search factors by natural language query."""
     services = get_services()
     results = search_factors(q, services.factor_store, limit=limit)
@@ -18,7 +18,7 @@ async def search_factors_endpoint(q: str, limit: int = 5):
 
 
 @router.post("/")
-async def create_factor_endpoint(req: FactorCreateRequest):
+def create_factor_endpoint(req: FactorCreateRequest):
     """Create a new custom factor."""
     services = get_services()
     result = create_factor(
@@ -34,7 +34,7 @@ async def create_factor_endpoint(req: FactorCreateRequest):
 
 
 @router.get("/")
-async def list_factors_endpoint(category: str = "", limit: int = 100):
+def list_factors_endpoint(category: str = "", limit: int = 100):
     """List all factors, optionally filtered by category."""
     services = get_services()
     if category:

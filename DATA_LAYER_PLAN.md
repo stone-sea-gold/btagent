@@ -770,14 +770,17 @@ Phase 6bis 调参（topk 更大的 universe + 实际 alpha 模型）。
 
 | 优先级 | 问题 | 位置 | 影响 |
 |--------|------|------|------|
-| **P0** | **换手率硬编码为 0** | `backtest_engine.py:314` | 前端有"换手率"指标卡但永远显示 0%,懂行者一眼看穿 |
-| **P0** | **回测失败静默降级为全 0** | `backtest_engine.py:319-324` | 失败时返回"全 0 成绩单",用户看到夏普 0.00 却不知是失败 |
-| P1 | SSE 不转发 tool 事件 | `chat_sse.py` | 用户看不到 Agent 的工具调用过程,黑盒感极强 |
+| **P0** | **换手率硬编码为 0** ✅ | `backtest_engine.py:314` | 前端有"换手率"指标卡但永远显示 0%,懂行者一眼看穿 |
+| **P0** | **回测失败静默降级为全 0** ✅ | `backtest_engine.py:319-324` | 失败时返回"全 0 成绩单",用户看到夏普 0.00 却不知是失败 |
+| **P0** | **token 非真流式（同步节点使事件缓冲）** ✅ | `graph.py` `agent_node` | 同步节点在线程池执行,回调事件临近结束才成批送达——正文变成末尾一次性吐出。改 `async def` + `await ainvoke()` 后逐字流式（实测首 token 提前约 4s,chunk 由 3 个变 6+ 个）|
+| **P0** | **阻塞代码跑在 async 路由** ✅ | `src/api/routes/*` | 39 个 handler 声明 `async def` 却只调同步重活,单 worker 下会冻结整个服务。改为 `def` 由 FastAPI 丢线程池,仅 SSE 与 `/health` 保持 async（`tests/test_api_routes.py` 锁定）|
+| P1 | SSE 不转发 tool 事件 ✅ | `chat_sse.py` + `graph.py` | 工具是普通函数直接调用,LangChain 的 `on_tool_*` 永不触发,所以改为自定义流事件广播,按 AI SDK v4 的 `9:`/`a:` 转发;工具调用过程可见 |
 | P2 | Agentic UI 未实现 | `frontend/src/` | Agent 只能输出文字,无法驱动页面(自研方案,已放弃 CopilotKit) |
 | P2 | 跨平台交付物缺失 | 项目根 | 无 `uv.lock`、无 setup 脚本、README 无 Windows 说明 |
 | P3 | 无鉴权 | `src/api/` | 任何人可调 LLM Key 烧钱 |
 | P3 | 无 CI / Docker / DB 迁移机制 | — | 工程化缺口 |
-| P3 | README 与实际不符 | `README.md` | 宣称 24 个工具,**实际注册 55 个**;仍写 CopilotKit |
+| P3 | README 与实际不符 ✅ | `README.md` | 计数与现状已同步（现 57 工具 / 14 域）,CopilotKit 描述已移除 |
+| P2 | ChromaDB 原生检索长时间持有 GIL | `factor_store.py` | 实测单次检索使其他 Python 线程停顿最长 126ms——`def`/线程池无法缓解,需进程级隔离;影响面小（仅因子检索期间）|
 
 ---
 

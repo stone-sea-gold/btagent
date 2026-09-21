@@ -15,13 +15,13 @@ class ChatSave(BaseModel):
 
 
 @router.get("")
-async def list_chats():
+def list_chats():
     services = get_services()
     return {"chats": services.chat_store.list_chats()}
 
 
 @router.get("/{chat_id}")
-async def get_chat(chat_id: str):
+def get_chat(chat_id: str):
     services = get_services()
     chat = services.chat_store.get_chat(chat_id)
     if chat is None:
@@ -30,14 +30,14 @@ async def get_chat(chat_id: str):
 
 
 @router.post("")
-async def save_chat(data: ChatSave):
+def save_chat(data: ChatSave):
     services = get_services()
     services.chat_store.save_chat(data.id, data.messages, data.title)
     return {"status": "saved", "id": data.id}
 
 
 @router.delete("/{chat_id}")
-async def delete_chat(chat_id: str):
+def delete_chat(chat_id: str):
     services = get_services()
     services.chat_store.delete_chat(chat_id)
     return {"status": "deleted"}

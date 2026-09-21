@@ -26,7 +26,7 @@ def _mask_key(raw: str) -> str:
 
 
 @router.get("/presets")
-async def list_presets():
+def list_presets():
     """List all saved presets (active one highlighted)."""
     services = get_services()
     presets = services.settings_store.list_presets()
@@ -60,7 +60,7 @@ async def list_presets():
 
 
 @router.post("/presets")
-async def add_preset(data: PresetCreate):
+def add_preset(data: PresetCreate):
     """Save a new preset."""
     services = get_services()
     pid = services.settings_store.add_preset(
@@ -73,7 +73,7 @@ async def add_preset(data: PresetCreate):
 
 
 @router.delete("/presets/{preset_id}")
-async def delete_preset(preset_id: int):
+def delete_preset(preset_id: int):
     """Delete a preset."""
     services = get_services()
     services.settings_store.delete_preset(preset_id)
@@ -81,7 +81,7 @@ async def delete_preset(preset_id: int):
 
 
 @router.post("/presets/{preset_id}/activate")
-async def activate_preset(preset_id: int):
+def activate_preset(preset_id: int):
     """Activate a preset — takes effect immediately on next message."""
     services = get_services()
     result = services.settings_store.activate_preset(preset_id)
@@ -92,7 +92,7 @@ async def activate_preset(preset_id: int):
 
 
 @router.post("/reset")
-async def reset_to_default():
+def reset_to_default():
     """Deactivate all presets — next call falls back to .env."""
     services = get_services()
     services.settings_store.activate_preset(None)  # deactivates all

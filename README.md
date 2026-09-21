@@ -244,6 +244,8 @@ Agent 层是一个 **单 Agent + ReAct 工具循环**，刻意保持轻薄：
 
 - **一次注册，两处派生** —— 适配器用 `@registry.tool("factor")` 声明一次，交给模型的工具列表和执行时的分发表都由注册表派生，两者不可能漂移。
 - **适配器即普通函数** —— 装饰器原样返回函数，LangChain 仍从 `__name__` / `__doc__` / 类型注解推导工具名、描述与参数 schema。
+- **工具调用过程可见** —— 正因适配器是普通函数，LangChain 的 `on_tool_start` / `on_tool_end` 永不触发；图改用自定义流事件广播工具起止，SSE 按 AI SDK v4 的 `9:` / `a:` 转发，长耗时工具不再让页面看起来卡死。
+- **阻塞代码不进事件循环** —— 调用同步业务层（qlib / DuckDB / ChromaDB / 外部 HTTP）的路由一律声明为 `def`，由 FastAPI 丢进线程池；只有真正异步的 SSE 端点保持 `async def`，规则由 `tests/test_api_routes.py` 锁定。
 - **注册顺序即工具顺序** —— 交给模型的工具顺序稳定可复现。
 - **业务逻辑与 Agent 解耦** —— `src/tools/` `src/core/` 不依赖 Agent，可独立测试；适配器只负责 JSON 出入参的转接。
 - **按能力域绑定（可选）** —— `create_agent_graph(..., domains=["factor", "backtest"])` 可只暴露部分能力域，缩小交给模型的工具集；默认仍然暴露全部 57 个。

@@ -21,7 +21,7 @@ router = APIRouter()
 
 
 @router.get("/")
-async def list_strategies_endpoint(limit: int = 20):
+def list_strategies_endpoint(limit: int = 20):
     """List all saved strategies."""
     services = get_services()
     result = list_strategies(services.strategy_store, limit=limit)
@@ -29,7 +29,7 @@ async def list_strategies_endpoint(limit: int = 20):
 
 
 @router.get("/search")
-async def search_strategies_endpoint(q: str, limit: int = 5):
+def search_strategies_endpoint(q: str, limit: int = 5):
     """Search strategies by semantic similarity."""
     services = get_services()
     result = search_strategies(q, services.strategy_store, limit=limit)
@@ -37,7 +37,7 @@ async def search_strategies_endpoint(q: str, limit: int = 5):
 
 
 @router.get("/{strategy_id}")
-async def get_strategy_endpoint(strategy_id: str):
+def get_strategy_endpoint(strategy_id: str):
     """Load a strategy by ID."""
     services = get_services()
     result = load_strategy(strategy_id, services.strategy_store)
@@ -45,7 +45,7 @@ async def get_strategy_endpoint(strategy_id: str):
 
 
 @router.get("/{strategy_id}/versions")
-async def get_version_chain_endpoint(strategy_id: str):
+def get_version_chain_endpoint(strategy_id: str):
     """Get the version chain for a strategy."""
     services = get_services()
     chain = services.strategy_store.get_version_chain(strategy_id)
@@ -53,7 +53,7 @@ async def get_version_chain_endpoint(strategy_id: str):
 
 
 @router.post("/")
-async def save_strategy_endpoint(req: StrategySaveRequest):
+def save_strategy_endpoint(req: StrategySaveRequest):
     """Save a strategy."""
     services = get_services()
     result = save_strategy(
@@ -69,7 +69,7 @@ async def save_strategy_endpoint(req: StrategySaveRequest):
 
 
 @router.put("/{strategy_id}")
-async def update_strategy_endpoint(strategy_id: str, req: StrategyUpdateRequest):
+def update_strategy_endpoint(strategy_id: str, req: StrategyUpdateRequest):
     """Update a strategy (creates new version)."""
     services = get_services()
     result = update_strategy(
@@ -82,7 +82,7 @@ async def update_strategy_endpoint(strategy_id: str, req: StrategyUpdateRequest)
 
 
 @router.post("/compare")
-async def compare_strategies_endpoint(req: StrategyCompareRequest):
+def compare_strategies_endpoint(req: StrategyCompareRequest):
     """Compare multiple strategies."""
     services = get_services()
     result = compare_strategies(req.strategy_ids, services.strategy_store)
@@ -90,7 +90,7 @@ async def compare_strategies_endpoint(req: StrategyCompareRequest):
 
 
 @router.delete("/{strategy_id}")
-async def delete_strategy_endpoint(strategy_id: str):
+def delete_strategy_endpoint(strategy_id: str):
     """Delete a strategy."""
     services = get_services()
     return delete_strategy(strategy_id, services.strategy_store)

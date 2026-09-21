@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.post("/run")
-async def run_selection_endpoint(req: SelectionRequest):
+def run_selection_endpoint(req: SelectionRequest):
     """Run stock selection pipeline."""
     services = get_services()
     result = select_stocks(

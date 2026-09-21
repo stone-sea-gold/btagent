@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 @router.post("/")
-async def run_backtest_endpoint(req: BacktestRequest):
+def run_backtest_endpoint(req: BacktestRequest):
     """Run a backtest."""
     services = get_services()
     result = run_backtest(
@@ -22,7 +22,7 @@ async def run_backtest_endpoint(req: BacktestRequest):
 
 
 @router.get("/")
-async def list_backtests():
+def list_backtests():
     """List all cached backtest results."""
     services = get_services()
     results = services.backtest_engine.list_all()
@@ -30,7 +30,7 @@ async def list_backtests():
 
 
 @router.get("/{backtest_id}")
-async def get_backtest(backtest_id: str):
+def get_backtest(backtest_id: str):
     """Get a specific backtest result by ID."""
     services = get_services()
     result = services.backtest_engine.get_by_id(backtest_id)
@@ -47,7 +47,7 @@ async def get_backtest(backtest_id: str):
 
 
 @router.post("/analyze")
-async def analyze_backtest_endpoint(req: BacktestAnalyzeRequest):
+def analyze_backtest_endpoint(req: BacktestAnalyzeRequest):
     """Analyze backtest results."""
     result = analyze_backtest(req.backtest_result)
     return {"analysis": result, "status": "success"}
