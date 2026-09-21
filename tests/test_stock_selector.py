@@ -18,24 +18,21 @@ from src.exceptions import SelectionFactorError
 
 
 def _qlib_data_available():
-    """Check if a Qlib dataset the engine can run against exists.
+    """Whether the engine's dataset — the one exported from the warehouse — exists.
 
-    Prefers the dataset exported by the data layer (``--export-qlib``), and
-    falls back to the legacy official download. The backtests then run on data
-    we generated, so these tests are honest once the pipeline has been run.
+    The retired official download is no longer consulted, so this mirrors the
+    engine's own resolution: an exported dataset or nothing.
     """
     from pathlib import Path as _P
+
     from src.config import settings
 
-    for candidate in (_P(settings.qlib_export_path), _P(settings.qlib_data_path)):
-        if (candidate / "calendars" / "day.txt").exists():
-            return True
-    return False
+    return (_P(settings.qlib_export_path) / "calendars" / "day.txt").exists()
 
 
 requires_qlib = pytest.mark.skipif(
     not _qlib_data_available(),
-    reason="Qlib data not available — run `python cli.py --init-data` first"
+    reason="No exported dataset — run `python cli.py --export-qlib` first",
 )
 
 

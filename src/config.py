@@ -46,12 +46,9 @@ class Settings(BaseSettings):
     llm_timeout: float = 60.0
     llm_max_retries: int = 3
 
-    # Qlib
-    qlib_data_path: str = str(Path.home() / ".qlib" / "qlib_data" / "cn_data")
-
-    # Dataset exported from the market warehouse (src/data/qlib_export.py).
-    # Preferred by the backtest engine once present; qlib_data_path stays as a
-    # fallback for an official download that predates the data layer.
+    # Dataset exported from the market warehouse (src/data/qlib_export.py). This
+    # is the only dataset the engine reads: the retired official-download path is
+    # gone, so a stale or foreign dataset cannot be picked up silently.
     qlib_export_path: str = str(Path(__file__).parent.parent / "data" / "market" / "qlib")
 
     # Database

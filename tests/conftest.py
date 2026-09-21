@@ -14,5 +14,4 @@ def _test_env(tmp_path, monkeypatch):
     monkeypatch.setenv("SQLITE_DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("CHROMA_PERSIST_DIR", str(tmp_path / "chroma"))
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
-    monkeypatch.setenv("QLIB_DATA_PATH", str(tmp_path / "qlib_data"))
     yield

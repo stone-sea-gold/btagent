@@ -44,8 +44,9 @@ chroma_db/
 # Test cache
 .pytest_cache/
 
-# Runtime data
-data/
+# Runtime data — anchored to the repo root on purpose: a bare `data/` also
+# matches `src/data/`, which silently excluded the whole data-layer package.
+/data/
 
 # Planning docs (not tracked in git)
 PHASE2_PLAN.md

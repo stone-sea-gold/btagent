@@ -85,7 +85,7 @@
 - **get_current_date**: 获取今天日期和最近交易日
 - **resolve_relative_date**: 解析相对日期（如"最近一个交易日"、"上个月"、"今年以来"）
 - **get_trading_days**: 获取日期区间内的所有交易日
-- **check_data_coverage**: 检查 Qlib 数据覆盖范围和新鲜度
+- **check_data_coverage**: 检查本地行情仓库与回测数据集的最新日期和覆盖范围
 
 ### 日期处理规则
 

@@ -84,7 +84,8 @@ python cli.py --sync-data --index csi300 --years 1
 数据落到 DuckDB 仓库，行情（不复权价）与复权因子分表存储，支撑增量同步（`--resume`）与复权校验。
 参数详见 `python cli.py --help`。
 
-> 旧命令 `python cli.py --init-data`（Qlib 官方数据下载）已由上述自建数据层取代。
+> 旧命令 `python cli.py --init-data`（Qlib 官方数据下载）**已彻底移除**：回测引擎只读
+> 自建数据层导出的数据集，不存在任何指向 qlib 官方数据的回退路径。
 
 ### 4. 安装前端
 
