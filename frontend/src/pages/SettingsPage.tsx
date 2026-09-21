@@ -8,6 +8,52 @@ interface Preset {
   is_active: boolean
 }
 
+/** Shape of GET /api/data/coverage. */
+interface Coverage {
+  data_start_date: string | null
+  data_end_date: string | null
+  is_stale: boolean
+  days_behind: number | null
+  status: string
+  warning?: string
+  warehouse?: {
+    status?: string
+    bars?: number
+    codes?: number
+    first_date?: string | null
+    last_date?: string | null
+    factor_rows?: number
+    calendar_days?: number
+  }
+}
+
+/** Shape of the sync job endpoints. */
+interface SyncJob {
+  id: string
+  status: 'running' | 'done' | 'error' | 'none'
+  phase: string
+  total: number
+  completed: number
+  current_code: string
+  progress: number
+  codes_synced: number
+  codes_skipped: number
+  codes_failed: number
+  bars_written: number
+  factors_written: number
+  dataset_days: number
+  finished_at: string | null
+  error: string
+}
+
+const PHASE_LABEL: Record<string, string> = {
+  starting: '准备中',
+  connecting: '连接数据源',
+  syncing: '同步行情到仓库',
+  exporting: '导出回测数据集',
+  finished: '已完成',
+}
+
 const PRESET_PROVIDERS: { label: string; baseUrl: string; model?: string }[] = [
   { label: 'DeepSeek',        baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
   { label: 'Kimi（月之暗面）', baseUrl: 'https://api.moonshot.cn/v1' },
@@ -125,6 +171,9 @@ export default function SettingsPage() {
           {message.text}
         </div>
       )}
+
+      {/* Local market data status + update */}
+      <LocalDataCard />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Left: Add form */}
@@ -262,5 +311,170 @@ function PresetCard({
         )}
       </div>
     </button>
+  )
+}
+
+/** Latest dates the local data covers, plus a one-click update.
+ *
+ * The warehouse and the exported dataset are separate stores and drift apart:
+ * the warehouse can be current while the dataset a backtest actually reads is a
+ * year behind. Both dates are therefore shown, and a run re-exports at the end
+ * so the engine is never left reading the older window.
+ */
+function LocalDataCard() {
+  const [coverage, setCoverage] = useState<Coverage | null>(null)
+  const [job, setJob] = useState<SyncJob | null>(null)
+  const [starting, setStarting] = useState(false)
+  const [error, setError] = useState('')
+
+  const loadCoverage = async () => {
+    try {
+      const res = await fetch('/api/data/coverage')
+      setCoverage(await res.json())
+    } catch {
+      setError('读取本地数据状态失败')
+    }
+  }
+
+  useEffect(() => {
+    loadCoverage()
+    // A sync may already be running from before this page was opened.
+    fetch('/api/data/sync/latest')
+      .then((res) => res.json())
+      .then((data: SyncJob) => { if (data.status === 'running') setJob(data) })
+      .catch(() => { /* no job yet */ })
+  }, [])
+
+  // Poll while the job runs, then refresh the coverage figures once it settles.
+  const jobId = job?.id
+  const jobStatus = job?.status
+  useEffect(() => {
+    if (!jobId || jobStatus !== 'running') return
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/data/sync/${jobId}`)
+        const data: SyncJob = await res.json()
+        setJob(data)
+        if (data.status !== 'running') loadCoverage()
+      } catch { /* transient: keep polling */ }
+    }, 1500)
+    return () => clearInterval(timer)
+  }, [jobId, jobStatus])
+
+  const startSync = async () => {
+    setError('')
+    setStarting(true)
+    try {
+      const res = await fetch('/api/data/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index: 'csi300' }),
+      })
+      const data = await res.json()
+      if (!res.ok) setError(data.detail || '启动同步失败')
+      else setJob(data)
+    } catch {
+      setError('启动同步失败')
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  const warehouse = coverage?.warehouse
+  const datasetEnd = coverage?.data_end_date ?? null
+  const warehouseEnd = warehouse?.last_date ?? null
+  const datasetBehind = Boolean(warehouseEnd && datasetEnd && warehouseEnd > datasetEnd)
+  const running = job?.status === 'running'
+
+  const row = (label: string, value: string) => (
+    <div className="flex items-baseline justify-between gap-4 text-sm">
+      <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+      <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{value}</span>
+    </div>
+  )
+
+  return (
+    <div
+      className="mb-5 p-5 rounded-xl border"
+      style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border)' }}
+    >
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <h2 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+          本地数据
+        </h2>
+        <button
+          onClick={startSync}
+          disabled={running || starting}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ background: 'var(--accent-gradient)', color: '#ffffff' }}
+        >
+          {running ? '更新中…' : '更新数据'}
+        </button>
+      </div>
+
+      <div className="space-y-1.5">
+        {row('行情仓库最新', warehouseEnd
+          || (warehouse?.status === 'no_warehouse' ? '尚未同步' : '—'))}
+        {row('回测数据集截至', datasetEnd || '尚未导出')}
+        {row('股票数 / bar 数', warehouse?.codes != null
+          ? `${warehouse.codes} 只 / ${(warehouse.bars ?? 0).toLocaleString()} 条`
+          : '—')}
+        {row('复权因子行数', warehouse?.factor_rows != null
+          ? warehouse.factor_rows.toLocaleString()
+          : '—')}
+      </div>
+
+      {datasetBehind && (
+        <p className="mt-3 text-xs" style={{ color: 'var(--warning)' }}>
+          ⚠️ 回测数据集落后于仓库（{datasetEnd} &lt; {warehouseEnd}）。回测只会用到数据集内的数据，
+          点「更新数据」会重新导出。
+        </p>
+      )}
+
+      {coverage?.is_stale && !datasetBehind && (
+        <p className="mt-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+          数据滞后 {coverage.days_behind} 天（最新 {datasetEnd}）。
+        </p>
+      )}
+
+      {running && job && (
+        <div className="mt-4">
+          <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
+            <span>
+              {PHASE_LABEL[job.phase] || job.phase}
+              {job.current_code ? ` · ${job.current_code}` : ''}
+            </span>
+            <span>{job.completed} / {job.total || '…'}</span>
+          </div>
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+            <div
+              className="h-full transition-all duration-300"
+              style={{ width: `${Math.round(job.progress * 100)}%`, background: 'var(--accent-gradient)' }}
+            />
+          </div>
+          <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+            逐只拉取，300 只约需数分钟；期间可离开本页，任务在后台继续。
+          </p>
+        </div>
+      )}
+
+      {job?.status === 'done' && (
+        <p className="mt-3 text-xs" style={{ color: 'var(--success)' }}>
+          ✅ 更新完成：{job.codes_synced} 只已同步
+          {job.codes_skipped > 0 && ` · ${job.codes_skipped} 只已是最新`}
+          {job.codes_failed > 0 && ` · ${job.codes_failed} 只失败`}
+          {' · '}{job.bars_written.toLocaleString()} 条 bar
+          {job.dataset_days > 0 && ` · 数据集 ${job.dataset_days} 个交易日`}
+        </p>
+      )}
+
+      {job?.status === 'error' && (
+        <p className="mt-3 text-xs" style={{ color: 'var(--danger)' }}>
+          ❌ 更新失败：{job.error}
+        </p>
+      )}
+
+      {error && <p className="mt-3 text-xs" style={{ color: 'var(--danger)' }}>{error}</p>}
+    </div>
   )
 }
