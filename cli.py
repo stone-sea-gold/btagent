@@ -21,6 +21,7 @@ from src.core.position_manager import PositionManager
 from src.core.session_store import SessionStore
 from src.core.stock_selector import StockSelector
 from src.core.strategy_compiler import StrategyCompiler
+from src.data.providers import close_providers
 from src.data.sync import DEFAULT_YEARS
 from src.exceptions import AIFundError
 from src.logging import configure_logging, get_logger
@@ -172,6 +173,7 @@ def run_cli(session_id: str | None = None):
     backtest_engine.close()
     strategy_store.close()
     session_store.close()
+    close_providers()
     logger.info("cli_session_end", session_id=session_id)
 
 
@@ -192,7 +194,7 @@ def sync_market_data(
     """
     from datetime import date, timedelta
 
-    from src.data.providers import PROVIDERS
+    from src.data.providers import PROVIDERS, get_provider
     from src.data.store import MarketStore
     from src.data.sync import sync_universe
 
@@ -212,9 +214,9 @@ def sync_market_data(
     print(f"区间：{window_start} → {window_end}")
     print(f"范围：{'代码 ' + ','.join(selected) if selected else '指数 ' + (index or 'csi300')}")
 
-    provider = PROVIDERS[source_name]()
+    provider = get_provider(source_name)
     try:
-        with provider, MarketStore() as store:
+        with MarketStore() as store:
             def report(done: int, total: int, code: str, rows: int) -> None:
                 print(f"  [{done}/{total}] {code}  {rows} 根", flush=True)
 

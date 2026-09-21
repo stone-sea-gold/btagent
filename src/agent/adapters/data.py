@@ -48,7 +48,7 @@ def register(registry: ToolRegistry, deps: AgentDeps) -> None:
         source: str = "",
     ) -> str:
         """Sync market data from a source into the local warehouse."""
-        from src.data.providers import PROVIDERS
+        from src.data.providers import PROVIDERS, get_provider
         from src.data.store import MarketStore
         from src.data.sync import resolve_codes, sync_calendar, sync_codes
 
@@ -63,7 +63,7 @@ def register(registry: ToolRegistry, deps: AgentDeps) -> None:
         end = date.fromisoformat(end_date) if end_date else date.today()  # noqa: DTZ011
         start = date.fromisoformat(start_date) if start_date else end - timedelta(days=365 * years)
 
-        provider = PROVIDERS[source_name]()
+        provider = get_provider(source_name)
         with MarketStore() as store:
             # An empty codes list is not the same as "no codes given".
             selected = resolve_codes(provider, index=want_index or None, codes=requested or None)

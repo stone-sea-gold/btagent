@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     # Source priority, most stable first. Used by build_provider_chain().
     data_source_priority: str = "baostock,pytdx,akshare"
 
+    # Ceiling for a data-source login. BaoStock's login alone measured 75-78s
+    # here, so this has to clear that comfortably: the point is to bound a stall,
+    # not to fail fast, because the SDK itself sets no socket timeout.
+    data_login_timeout: float = 180.0
+
     # Logging
     log_level: str = "INFO"
 

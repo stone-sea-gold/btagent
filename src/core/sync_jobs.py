@@ -21,7 +21,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from src.config import settings
-from src.data.providers import PROVIDERS
+from src.data.providers import PROVIDERS, get_provider
 from src.data.qlib_export import write_qlib_dataset
 from src.data.store import MarketStore
 from src.data.sync import resolve_codes, sync_calendar, sync_codes
@@ -144,9 +144,10 @@ class SyncJobManager:
 
             # Connecting is its own phase: BaoStock's login alone costs over a
             # minute here, and without it the UI would sit on "syncing 0/N" with
-            # no way to tell that apart from a stalled transfer.
+            # no way to tell that apart from a stalled transfer. The provider is
+            # shared, so only the first run after startup pays that cost.
             job.phase = "connecting"
-            provider = PROVIDERS[source]()
+            provider = get_provider(source)
 
             with MarketStore() as store:
                 job.phase = "syncing"
