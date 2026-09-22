@@ -131,7 +131,22 @@ cd frontend && npm run dev
 
 在浏览器的 **设置** 页面中，可以保存多个厂商预设并一键切换。切换后 **下一条消息立即生效**，无需重启服务。
 
-协议自动检测：URL 包含 `/anthropic` 时使用 Anthropic 协议，否则使用 OpenAI 协议。
+预设还可以**接入厂商列表之外的自建网关**：厂商下拉选择「自定义 / 其他（OpenAI 兼容）」，自行填写名称、Base URL、API Key 和 Model 即可。
+
+### 协议
+
+每个预设都带一个 `协议` 字段，可选 `自动检测` / `OpenAI` / `Anthropic`。
+
+选 `自动检测` 时按 Base URL 推断：路径含 `/anthropic`，或主机名含 `anthropic`，即走 Anthropic 协议，否则走 OpenAI 协议。这个启发式对常见厂商够用，但对自建网关不可靠——网关名字里带 `anthropic` 会被迫走 Anthropic SDK，而中性 URL 的 Anthropic 兼容网关又会被迫走 OpenAI。**遇到这种情况，直接在预设里把协议显式指定即可。**
+
+两个协议的 Base URL 写法不同，注意别多写 `/v1`：
+
+| 协议 | 请求路径 | Base URL 示例 |
+|------|----------|---------------|
+| OpenAI | `{base_url}/chat/completions` | `https://api.openai.com/v1` |
+| Anthropic | `{base_url}/v1/messages` | `https://api.anthropic.com` |
+
+`.env` 里的 `LLM_PROVIDER` / `DEEPSEEK_BASE_URL` 等仍按上面的启发式推断，没有显式协议字段；要固定协议请用 Web UI 预设。
 
 ## 项目结构
 

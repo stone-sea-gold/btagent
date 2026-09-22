@@ -62,13 +62,18 @@ def invalidate_llm_cache() -> None:
 
 
 def _llm_config_key() -> tuple:
-    """Identity of the active LLM configuration, used as the cache key."""
+    """Identity of the active LLM configuration, used as the cache key.
+
+    The protocol belongs here: two presets can share a model, key and base URL
+    while speaking different protocols, and without it a protocol-only switch
+    would reuse the previous client and appear to do nothing.
+    """
     from src.config import settings
     from src.llm_factory import _load_override
 
     cfg = _load_override()
     if cfg and cfg.base_url and cfg.api_key and cfg.model:
-        return (cfg.model, cfg.api_key, cfg.base_url)
+        return (cfg.model, cfg.api_key, cfg.base_url, cfg.protocol)
     return (settings.llm_provider, settings.llm_api_key, settings.llm_model)
 
 

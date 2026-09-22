@@ -412,6 +412,10 @@ class MarketConfig(BaseModel):
 class LLMConfig(BaseModel):
     """User-overrideable LLM configuration."""
     provider: str = Field(default="custom", description="Provider label shown in UI")
+    protocol: str = Field(
+        default="auto",
+        description="Wire protocol: 'auto' (infer from base_url) | 'openai' | 'anthropic'",
+    )
     base_url: str = ""
     api_key: str = ""
     model: str = ""

@@ -5,6 +5,7 @@ interface Preset {
   label: string
   base_url: string
   model: string
+  protocol: string
   is_active: boolean
 }
 
@@ -54,20 +55,40 @@ const PHASE_LABEL: Record<string, string> = {
   finished: '已完成',
 }
 
-const PRESET_PROVIDERS: { label: string; baseUrl: string; model?: string }[] = [
-  { label: 'DeepSeek',        baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
-  { label: 'Kimi（月之暗面）', baseUrl: 'https://api.moonshot.cn/v1' },
-  { label: '千问（通义）',     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
-  { label: 'GLM（智谱）',      baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
-  { label: 'MiniMax（稀宇）',  baseUrl: 'https://api.minimax.chat/v1' },
-  { label: 'MIMO（小米）',     baseUrl: 'https://token-plan-cn.xiaomimimo.com/v1' },
-  { label: 'Anthropic',       baseUrl: 'https://api.anthropic.com' },
-  { label: 'OpenAI',          baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
+/** Protocol is a per-preset choice, not a property of the vendor.
+ *
+ * It used to be inferred from the base URL only, so a self-hosted gateway was
+ * routed by whatever its URL happened to look like. Each vendor now carries the
+ * protocol its endpoint actually speaks, and 'auto' keeps the old inference for
+ * anything the user types by hand.
+ */
+const PROTOCOL_LABEL: Record<string, string> = {
+  auto: '自动检测',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  ollama: 'Ollama',
+}
+
+const PRESET_PROVIDERS: {
+  label: string
+  baseUrl: string
+  model?: string
+  protocol: 'openai' | 'anthropic'
+}[] = [
+  { label: 'DeepSeek',        baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat', protocol: 'openai' },
+  { label: 'Kimi（月之暗面）', baseUrl: 'https://api.moonshot.cn/v1', protocol: 'openai' },
+  { label: '千问（通义）',     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', protocol: 'openai' },
+  { label: 'GLM（智谱）',      baseUrl: 'https://open.bigmodel.cn/api/paas/v4', protocol: 'openai' },
+  { label: 'MiniMax（稀宇）',  baseUrl: 'https://api.minimax.chat/v1', protocol: 'openai' },
+  { label: 'MIMO（小米）',     baseUrl: 'https://token-plan-cn.xiaomimimo.com/v1', protocol: 'openai' },
+  // 官方 Anthropic 靠"主机名含 anthropic"这条启发式命中，显式写出才不会退化
+  { label: 'Anthropic',       baseUrl: 'https://api.anthropic.com', protocol: 'anthropic' },
+  { label: 'OpenAI',          baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o', protocol: 'openai' },
 ]
 
 export default function SettingsPage() {
   const [presets, setPresets] = useState<Preset[]>([])
-  const [defaultPreset, setDefaultPreset] = useState<{ label: string; base_url: string; model: string } | null>(null)
+  const [defaultPreset, setDefaultPreset] = useState<{ label: string; base_url: string; model: string; protocol: string } | null>(null)
   const [activeId, setActiveId] = useState<number | null>(null)
 
   // Add form
@@ -76,6 +97,7 @@ export default function SettingsPage() {
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
+  const [protocol, setProtocol] = useState('auto')
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -113,13 +135,13 @@ export default function SettingsPage() {
       const res = await fetch('/api/settings/presets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: label.trim(), base_url: baseUrl.trim(), api_key: apiKey.trim(), model: model.trim() }),
+        body: JSON.stringify({ label: label.trim(), base_url: baseUrl.trim(), api_key: apiKey.trim(), model: model.trim(), protocol }),
       })
       if (!res.ok) {
         const errBody = await res.text().catch(() => '')
         throw new Error(`${res.status} ${errBody}`)
       }
-      setVendor(''); setLabel(''); setBaseUrl(''); setApiKey(''); setModel('')
+      setVendor(''); setLabel(''); setBaseUrl(''); setApiKey(''); setModel(''); setProtocol('auto')
       await fetchPresets()
       showMsg('success', '预设已添加')
     } catch (e) {
@@ -196,6 +218,7 @@ export default function SettingsPage() {
                   setBaseUrl(preset.baseUrl)
                   setModel(preset.model || '')
                   setLabel(preset.label)
+                  setProtocol(preset.protocol)
                 } else if (PRESET_PROVIDERS.some((p) => p.label === label)) {
                   // 从预置厂商切回自定义，清掉自动带入的名称
                   setLabel('')
@@ -223,6 +246,14 @@ export default function SettingsPage() {
               onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 2px var(--accent-light)' }}
               onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none' }}
             />
+            <select value={protocol} onChange={(e) => setProtocol(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all duration-200 appearance-none cursor-pointer"
+              style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+            >
+              <option value="auto">协议：自动检测（按 Base URL 推断）</option>
+              <option value="openai">协议：OpenAI（Authorization: Bearer）</option>
+              <option value="anthropic">协议：Anthropic（x-api-key）</option>
+            </select>
             <div className="flex gap-3">
               <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
                 placeholder="API Key"
@@ -255,6 +286,7 @@ export default function SettingsPage() {
               label={defaultPreset.label}
               base_url={defaultPreset.base_url}
               model={defaultPreset.model}
+              protocol={defaultPreset.protocol}
               isActive={activeId === null}
               onClick={handleReset}
               onDelete={null}
@@ -266,6 +298,7 @@ export default function SettingsPage() {
               label={p.label}
               base_url={p.base_url}
               model={p.model}
+              protocol={p.protocol}
               isActive={p.is_active}
               onClick={() => handleActivate(p.id)}
               onDelete={() => handleDelete(p.id)}
@@ -278,11 +311,12 @@ export default function SettingsPage() {
 }
 
 function PresetCard({
-  label, base_url, model, isActive, onClick, onDelete,
+  label, base_url, model, protocol, isActive, onClick, onDelete,
 }: {
   label: string
   base_url: string
   model: string
+  protocol: string
   isActive: boolean
   onClick: () => void
   onDelete: (() => void) | null
@@ -315,6 +349,9 @@ function PresetCard({
           </p>
           <p className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
             {model}
+          </p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+            协议：{PROTOCOL_LABEL[protocol] ?? protocol}
           </p>
         </div>
         {onDelete && (
