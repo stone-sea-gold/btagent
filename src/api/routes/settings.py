@@ -1,20 +1,27 @@
 """LLM settings API routes."""
 
+import re
 from typing import Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from src.agent.graph import invalidate_llm_cache
 from src.api.dependencies import get_services
 from src.config import settings
+from src.core.llm_probe import probe_llm_config
+from src.core.models import LLMConfig
 from src.llm_factory import _detect_protocol
 
 router = APIRouter()
 
+#: RFC 7230 token — the only shape an HTTP header name may take.
+_HEADER_NAME = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 
-class PresetCreate(BaseModel):
-    label: str
+
+class PresetBase(BaseModel):
+    """The connection half of a preset, shared by save and probe."""
+
     base_url: str
     api_key: str
     model: str
@@ -22,6 +29,33 @@ class PresetCreate(BaseModel):
     # protocol as "auto", so a typo would silently fall back to URL guessing
     # instead of telling the user.
     protocol: Literal["auto", "openai", "anthropic"] = "auto"
+    # Some gateways reject requests without an extra header (OpenCode Go wants
+    # x-opencode-session), so a preset has to be able to carry one.
+    headers: dict[str, str] = {}
+
+    @field_validator("headers")
+    @classmethod
+    def _validate_headers(cls, value: dict[str, str]) -> dict[str, str]:
+        """Reject header names and values that could smuggle extra headers.
+
+        These strings are handed to the HTTP client verbatim, and a value
+        containing CR/LF would let a preset inject arbitrary headers into the
+        outgoing request. Validated rather than trusted.
+        """
+        for name, header_value in value.items():
+            if not _HEADER_NAME.fullmatch(name):
+                raise ValueError(f"非法请求头名称：{name!r}")
+            if "\n" in header_value or "\r" in header_value:
+                raise ValueError(f"请求头 {name} 的值不能包含换行符")
+        return value
+
+
+class PresetCreate(PresetBase):
+    label: str
+
+
+class PresetProbe(PresetBase):
+    """Probe payload — identical to save, minus a label nothing reads."""
 
 
 def _mask_key(raw: str) -> str:
@@ -36,7 +70,11 @@ def _mask_key(raw: str) -> str:
 def list_presets():
     """List all saved presets (active one highlighted)."""
     services = get_services()
-    presets = services.settings_store.list_presets()
+    presets = []
+    for preset in services.settings_store.list_presets():
+        # A header value can be a credential, so the list exposes names only.
+        preset["header_names"] = sorted(preset.pop("headers"))
+        presets.append(preset)
 
     # Also return the .env default as a read-only preset
     provider = settings.llm_provider
@@ -77,6 +115,25 @@ def list_presets():
     }
 
 
+@router.post("/presets/probe")
+def probe_preset(data: PresetProbe):
+    """Try a configuration and report where it landed. Nothing is persisted.
+
+    Deliberately ``def``: the probe makes a blocking network call, so it belongs
+    in the threadpool. As ``async def`` it would run that call on the event loop
+    and stall every other request for its duration.
+    """
+    return probe_llm_config(
+        LLMConfig(
+            base_url=data.base_url,
+            api_key=data.api_key,
+            model=data.model,
+            protocol=data.protocol,
+            headers=data.headers,
+        )
+    )
+
+
 @router.post("/presets")
 def add_preset(data: PresetCreate):
     """Save a new preset."""
@@ -87,6 +144,7 @@ def add_preset(data: PresetCreate):
         api_key=data.api_key,
         model=data.model,
         protocol=data.protocol,
+        headers=data.headers,
     )
     return {"status": "added", "id": pid}
 

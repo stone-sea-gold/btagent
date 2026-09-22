@@ -419,4 +419,8 @@ class LLMConfig(BaseModel):
     base_url: str = ""
     api_key: str = ""
     model: str = ""
+    headers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Extra request headers some gateways require (e.g. x-opencode-session)",
+    )
     is_active: bool = Field(default=True)

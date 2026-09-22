@@ -64,16 +64,23 @@ def invalidate_llm_cache() -> None:
 def _llm_config_key() -> tuple:
     """Identity of the active LLM configuration, used as the cache key.
 
-    The protocol belongs here: two presets can share a model, key and base URL
-    while speaking different protocols, and without it a protocol-only switch
-    would reuse the previous client and appear to do nothing.
+    The protocol and the custom headers belong here: two presets can share a
+    model, key and base URL while differing in either, and without them such a
+    switch would reuse the previous client and appear to do nothing. Headers
+    are sorted into a tuple because a dict is unhashable.
     """
     from src.config import settings
     from src.llm_factory import _load_override
 
     cfg = _load_override()
     if cfg and cfg.base_url and cfg.api_key and cfg.model:
-        return (cfg.model, cfg.api_key, cfg.base_url, cfg.protocol)
+        return (
+            cfg.model,
+            cfg.api_key,
+            cfg.base_url,
+            cfg.protocol,
+            tuple(sorted(cfg.headers.items())),
+        )
     return (settings.llm_provider, settings.llm_api_key, settings.llm_model)
 
 
@@ -109,6 +116,12 @@ def _llm_error_hint(message: str) -> str:
         return "请求频率过高，请稍后重试。"
     if "at least one message" in message:
         return "LLM 配置异常，协议检测可能不匹配。请尝试更换 Base URL 格式（OpenAI / Anthropic）。"
+    if "400" in message or "bad request" in lowered:
+        return (
+            "请求被拒绝（400）：可能是模型名不被该端点支持，或该网关要求额外的请求头"
+            "（例如 OpenCode Go 需要 x-opencode-session）。请在设置页用「测试连接」定位，"
+            "必要时在「自定义请求头」中补充。"
+        )
     return f"LLM 调用失败: {message[:200]}"
 
 
