@@ -71,6 +71,7 @@ export default function SettingsPage() {
   const [activeId, setActiveId] = useState<number | null>(null)
 
   // Add form
+  const [vendor, setVendor] = useState('')
   const [label, setLabel] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -98,8 +99,13 @@ export default function SettingsPage() {
   useEffect(() => { fetchPresets() }, [])
 
   const handleAdd = async () => {
-    if (!label.trim() || !baseUrl.trim() || !apiKey.trim() || !model.trim()) {
-      showMsg('error', '所有字段均为必填项')
+    const missing: string[] = []
+    if (!label.trim()) missing.push('名称')
+    if (!baseUrl.trim()) missing.push('Base URL')
+    if (!apiKey.trim()) missing.push('API Key')
+    if (!model.trim()) missing.push('Model')
+    if (missing.length > 0) {
+      showMsg('error', `请填写：${missing.join('、')}`)
       return
     }
     setSaving(true)
@@ -113,7 +119,7 @@ export default function SettingsPage() {
         const errBody = await res.text().catch(() => '')
         throw new Error(`${res.status} ${errBody}`)
       }
-      setLabel(''); setBaseUrl(''); setApiKey(''); setModel('')
+      setVendor(''); setLabel(''); setBaseUrl(''); setApiKey(''); setModel('')
       await fetchPresets()
       showMsg('success', '预设已添加')
     } catch (e) {
@@ -182,23 +188,34 @@ export default function SettingsPage() {
             添加预设
           </h2>
           <div className="space-y-3">
-            <select value={label} onChange={(e) => {
+            <select value={vendor} onChange={(e) => {
                 const selected = e.target.value
-                setLabel(selected)
+                setVendor(selected)
                 const preset = PRESET_PROVIDERS.find((p) => p.label === selected)
                 if (preset) {
                   setBaseUrl(preset.baseUrl)
                   setModel(preset.model || '')
+                  setLabel(preset.label)
+                } else if (PRESET_PROVIDERS.some((p) => p.label === label)) {
+                  // 从预置厂商切回自定义，清掉自动带入的名称
+                  setLabel('')
                 }
               }}
               className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all duration-200 appearance-none cursor-pointer"
               style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
             >
-              <option value="">-- 选择厂商 --</option>
+              <option value="">自定义 / 其他（OpenAI 兼容）</option>
               {PRESET_PROVIDERS.map((p) => (
                 <option key={p.label} value={p.label}>{p.label}</option>
               ))}
             </select>
+            <input type="text" value={label} onChange={(e) => setLabel(e.target.value)}
+              placeholder="名称（自定义时可随意命名）"
+              className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all duration-200"
+              style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+              onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 2px var(--accent-light)' }}
+              onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none' }}
+            />
             <input type="text" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="Base URL"
               className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all duration-200"
