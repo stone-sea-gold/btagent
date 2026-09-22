@@ -148,6 +148,35 @@ cd frontend && npm run dev
 
 `.env` 里的 `LLM_PROVIDER` / `DEEPSEEK_BASE_URL` 等仍按上面的启发式推断，没有显式协议字段；要固定协议请用 Web UI 预设。
 
+### 自定义请求头
+
+有些网关会拒绝不带特定请求头的请求。例如 **OpenCode Go** 要求 `x-opencode-session`，否则一律返回：
+
+```json
+{"error":{"type":"MissingSessionID","message":"Request is missing x-opencode-session ..."}}
+```
+
+预设表单里的「自定义请求头」就是为此准备的，每行一个 `名称: 值`：
+
+```
+x-opencode-session: aifund5
+```
+
+这份请求头会随认证头一起发出，**不会覆盖** `Authorization` 或 `x-api-key`。名称必须是合法 HTTP token，值不能含换行符（防止请求头注入）。
+
+### 测试连接
+
+预设表单里的「测试连接」按钮会**在保存之前**发一次真实的、**绑定了工具**的流式调用，因为"能聊天"不等于"能驱动本 agent"——本项目有 57 个工具，真正的失败模式是 tool calling。返回结果分两件事报告：
+
+| 字段 | 含义 |
+|------|------|
+| `ok` | 端点是否应答了 |
+| `tool_calling` | 模型是否真的发出了工具调用 |
+
+只有 `ok=true` **且** `tool_calling=true`，这个供应商才算真正可用。失败时会给出 `stage`（`connect` / `auth` / `quota` / `model` / `request` / `rate_limit` / `timeout` / `stream`）与对应的中文修复提示。
+
+对应端点：`POST /api/settings/presets/probe`（不落库）。
+
 ## 项目结构
 
 ```

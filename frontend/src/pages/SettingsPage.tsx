@@ -6,7 +6,22 @@ interface Preset {
   base_url: string
   model: string
   protocol: string
+  header_names: string[]
   is_active: boolean
+}
+
+/** Shape of POST /api/settings/presets/probe. */
+interface ProbeResult {
+  ok: boolean
+  stage: string
+  hint: string
+  http_status: number | null
+  latency_ms: number
+  ttft_ms: number | null
+  tool_calling: boolean
+  tool_names: string[]
+  sample: string
+  detail: string
 }
 
 /** Shape of GET /api/data/coverage. */
@@ -98,6 +113,9 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
   const [protocol, setProtocol] = useState('auto')
+  const [headersText, setHeadersText] = useState('')
+  const [probing, setProbing] = useState(false)
+  const [probeResult, setProbeResult] = useState<ProbeResult | null>(null)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -105,6 +123,29 @@ export default function SettingsPage() {
     setMessage({ type, text })
     setTimeout(() => setMessage(null), 3000)
   }
+
+  /** Parse the "Name: Value" textarea into the header map the API expects. */
+  const parseHeaders = (): { headers: Record<string, string>; error: string | null } => {
+    const headers: Record<string, string> = {}
+    for (const rawLine of headersText.split('\n')) {
+      const line = rawLine.trim()
+      if (!line) continue
+      const separator = line.indexOf(':')
+      if (separator <= 0) {
+        return { headers: {}, error: `请求头格式应为「名称: 值」——${line}` }
+      }
+      headers[line.slice(0, separator).trim()] = line.slice(separator + 1).trim()
+    }
+    return { headers, error: null }
+  }
+
+  const connectionPayload = () => ({
+    base_url: baseUrl.trim(),
+    api_key: apiKey.trim(),
+    model: model.trim(),
+    protocol,
+    headers: parseHeaders().headers,
+  })
 
   const fetchPresets = async () => {
     try {
@@ -130,18 +171,24 @@ export default function SettingsPage() {
       showMsg('error', `请填写：${missing.join('、')}`)
       return
     }
+    const { error: headerError } = parseHeaders()
+    if (headerError) {
+      showMsg('error', headerError)
+      return
+    }
     setSaving(true)
     try {
       const res = await fetch('/api/settings/presets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: label.trim(), base_url: baseUrl.trim(), api_key: apiKey.trim(), model: model.trim(), protocol }),
+        body: JSON.stringify({ label: label.trim(), ...connectionPayload() }),
       })
       if (!res.ok) {
         const errBody = await res.text().catch(() => '')
         throw new Error(`${res.status} ${errBody}`)
       }
       setVendor(''); setLabel(''); setBaseUrl(''); setApiKey(''); setModel(''); setProtocol('auto')
+      setHeadersText(''); setProbeResult(null)
       await fetchPresets()
       showMsg('success', '预设已添加')
     } catch (e) {
@@ -149,6 +196,38 @@ export default function SettingsPage() {
       showMsg('error', '添加失败')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleProbe = async () => {
+    const missing: string[] = []
+    if (!baseUrl.trim()) missing.push('Base URL')
+    if (!apiKey.trim()) missing.push('API Key')
+    if (!model.trim()) missing.push('Model')
+    if (missing.length > 0) {
+      showMsg('error', `请填写：${missing.join('、')}`)
+      return
+    }
+    const { error: headerError } = parseHeaders()
+    if (headerError) {
+      showMsg('error', headerError)
+      return
+    }
+    setProbing(true)
+    setProbeResult(null)
+    try {
+      const res = await fetch('/api/settings/presets/probe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(connectionPayload()),
+      })
+      if (!res.ok) throw new Error(`${res.status}`)
+      setProbeResult(await res.json())
+    } catch (e) {
+      console.error('Probe failed:', e)
+      showMsg('error', '测试请求失败')
+    } finally {
+      setProbing(false)
     }
   }
 
@@ -270,12 +349,29 @@ export default function SettingsPage() {
                 onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none' }}
               />
             </div>
-            <button onClick={handleAdd} disabled={saving}
-              className="w-full px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-40"
-              style={{ background: 'var(--accent-gradient)', color: '#ffffff' }}
-            >
-              {saving ? '添加中...' : '添加预设'}
-            </button>
+            <textarea value={headersText} onChange={(e) => setHeadersText(e.target.value)}
+              rows={2}
+              placeholder={'自定义请求头（可选，每行一个「名称: 值」）\n例：x-opencode-session: aifund5'}
+              className="w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all duration-200 font-mono resize-y"
+              style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+              onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 2px var(--accent-light)' }}
+              onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none' }}
+            />
+            {probeResult && <ProbeReport result={probeResult} />}
+            <div className="flex gap-3">
+              <button onClick={handleProbe} disabled={probing}
+                className="flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-40 border"
+                style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+              >
+                {probing ? '测试中...' : '测试连接'}
+              </button>
+              <button onClick={handleAdd} disabled={saving}
+                className="flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-40"
+                style={{ background: 'var(--accent-gradient)', color: '#ffffff' }}
+              >
+                {saving ? '添加中...' : '添加预设'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -299,6 +395,7 @@ export default function SettingsPage() {
               base_url={p.base_url}
               model={p.model}
               protocol={p.protocol}
+              header_names={p.header_names}
               isActive={p.is_active}
               onClick={() => handleActivate(p.id)}
               onDelete={() => handleDelete(p.id)}
@@ -310,13 +407,53 @@ export default function SettingsPage() {
   )
 }
 
+/** Verdict of POST /api/settings/presets/probe.
+ *
+ * Two facts are reported separately: whether the endpoint answered at all
+ * (`ok`) and whether it emitted a tool call (`tool_calling`). A provider that
+ * chats happily but never calls tools cannot drive this agent, and a plain
+ * reachability check would wrongly call that a pass.
+ */
+function ProbeReport({ result }: { result: ProbeResult }) {
+  const color = !result.ok ? 'var(--danger)' : result.tool_calling ? 'var(--success)' : 'var(--warning)'
+  const headline = !result.ok
+    ? `连接失败（${result.stage}${result.http_status ? ` · HTTP ${result.http_status}` : ''}）`
+    : result.tool_calling
+      ? `连接成功，且工具调用正常（${result.tool_names.join(', ')}）`
+      : '连接成功，但模型没有发出工具调用'
+
+  return (
+    <div className="p-3 rounded-lg text-xs space-y-1"
+      style={{ backgroundColor: 'var(--bg-tertiary)', borderLeft: `3px solid ${color}` }}
+    >
+      <p className="font-medium" style={{ color }}>{headline}</p>
+      {result.hint && <p style={{ color: 'var(--text-secondary)' }}>{result.hint}</p>}
+      <p style={{ color: 'var(--text-muted)' }}>
+        耗时 {result.latency_ms}ms
+        {result.ttft_ms !== null && `（首字 ${result.ttft_ms}ms）`}
+      </p>
+      {!result.ok && result.detail && (
+        <p className="font-mono break-words" style={{ color: 'var(--text-muted)' }}>
+          {result.detail}
+        </p>
+      )}
+      {result.ok && result.sample && (
+        <p className="font-mono break-words" style={{ color: 'var(--text-muted)' }}>
+          返回：{result.sample}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function PresetCard({
-  label, base_url, model, protocol, isActive, onClick, onDelete,
+  label, base_url, model, protocol, header_names = [], isActive, onClick, onDelete,
 }: {
   label: string
   base_url: string
   model: string
   protocol: string
+  header_names?: string[]
   isActive: boolean
   onClick: () => void
   onDelete: (() => void) | null
@@ -352,6 +489,7 @@ function PresetCard({
           </p>
           <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
             协议：{PROTOCOL_LABEL[protocol] ?? protocol}
+            {header_names.length > 0 && ` ｜ 请求头：${header_names.join(', ')}`}
           </p>
         </div>
         {onDelete && (

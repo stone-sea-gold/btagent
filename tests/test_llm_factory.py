@@ -166,8 +166,10 @@ def test_llm_cache_key_includes_protocol(tmp_path, monkeypatch):
         anthropic_key = _llm_config_key()
 
         assert openai_key != anthropic_key
-        assert openai_key[-1] == "openai"
-        assert anthropic_key[-1] == "anthropic"
+        # Membership, not position: the key later gained a headers element, and
+        # a positional assertion would have silently stopped testing protocol.
+        assert "openai" in openai_key
+        assert "anthropic" in anthropic_key
     finally:
         store.close()
 

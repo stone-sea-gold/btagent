@@ -54,7 +54,12 @@ def _resolve_protocol(protocol: str, base_url: str) -> str:
     return _detect_protocol(base_url)
 
 
-def _create_chat_anthropic(api_key: str, model: str, base_url: str = "") -> BaseChatModel:
+def _create_chat_anthropic(
+    api_key: str,
+    model: str,
+    base_url: str = "",
+    headers: dict[str, str] | None = None,
+) -> BaseChatModel:
     """Create ChatAnthropic instance."""
     from langchain_anthropic import ChatAnthropic
 
@@ -67,10 +72,19 @@ def _create_chat_anthropic(api_key: str, model: str, base_url: str = "") -> Base
     }
     if base_url:
         kwargs["base_url"] = base_url
+    if headers:
+        # Verified to ride alongside x-api-key / anthropic-version, not replace
+        # them, so a gateway can demand an extra header without breaking auth.
+        kwargs["default_headers"] = headers
     return ChatAnthropic(**kwargs)
 
 
-def _create_chat_openai(api_key: str, model: str, base_url: str = "") -> BaseChatModel:
+def _create_chat_openai(
+    api_key: str,
+    model: str,
+    base_url: str = "",
+    headers: dict[str, str] | None = None,
+) -> BaseChatModel:
     """Create ChatOpenAI instance."""
     from langchain_openai import ChatOpenAI
 
@@ -83,6 +97,8 @@ def _create_chat_openai(api_key: str, model: str, base_url: str = "") -> BaseCha
     }
     if base_url:
         kwargs["base_url"] = base_url
+    if headers:
+        kwargs["default_headers"] = headers
     return ChatOpenAI(**kwargs)
 
 
@@ -98,6 +114,7 @@ def _load_override() -> LLMConfig | None:
                 api_key=cfg["api_key"],
                 model=cfg["model"],
                 protocol=cfg.get("protocol") or "auto",
+                headers=cfg.get("headers") or {},
                 provider="preset",
             )
     except Exception:
@@ -125,18 +142,22 @@ def create_llm(override: LLMConfig | None = None) -> BaseChatModel:
             protocol=protocol,
             requested=cfg.protocol,
             url=cfg.base_url,
+            # Names only: a header value can be a credential.
+            headers=sorted(cfg.headers),
         )
         if protocol == "anthropic":
             return _create_chat_anthropic(
                 api_key=cfg.api_key,
                 model=cfg.model,
                 base_url=cfg.base_url,
+                headers=cfg.headers,
             )
         else:
             return _create_chat_openai(
                 api_key=cfg.api_key,
                 model=cfg.model,
                 base_url=cfg.base_url,
+                headers=cfg.headers,
             )
 
     # ── Fallback: use .env configuration ─────────────────────────────
