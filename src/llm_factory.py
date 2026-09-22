@@ -1,6 +1,8 @@
-"""LLM factory — auto-detects API protocol from URL.
+"""LLM factory — resolves the API protocol, then builds the matching client.
 
-Supports SQLite-based config overrides for hot-switching without restart.
+A saved preset may pin its protocol (``openai`` / ``anthropic``); otherwise
+``"auto"`` infers it from the base URL. Supports SQLite-based config overrides
+for hot-switching without restart.
 """
 
 from langchain_core.language_models import BaseChatModel
@@ -32,6 +34,24 @@ def _detect_protocol(base_url: str) -> str:
     if "anthropic" in url_lower.split("//")[-1].split("/")[0]:
         return "anthropic"
     return "openai"
+
+
+def _resolve_protocol(protocol: str, base_url: str) -> str:
+    """Resolve the wire protocol: an explicit choice beats the URL heuristic.
+
+    The heuristic stays as the fallback because it is right for the common
+    shapes (``…/anthropic`` paths, ``api.anthropic.com``), but it cannot be
+    trusted in general: a gateway *named* like an Anthropic proxy was forced
+    onto the Anthropic SDK although it spoke the OpenAI protocol, and an
+    Anthropic-compatible gateway at a neutral URL was forced the other way.
+    Naming the protocol is the escape hatch.
+
+    Returns:
+        "anthropic" or "openai"
+    """
+    if protocol in ("openai", "anthropic"):
+        return protocol
+    return _detect_protocol(base_url)
 
 
 def _create_chat_anthropic(api_key: str, model: str, base_url: str = "") -> BaseChatModel:
@@ -77,6 +97,7 @@ def _load_override() -> LLMConfig | None:
                 base_url=cfg["base_url"],
                 api_key=cfg["api_key"],
                 model=cfg["model"],
+                protocol=cfg.get("protocol") or "auto",
                 provider="preset",
             )
     except Exception:
@@ -96,9 +117,15 @@ def create_llm(override: LLMConfig | None = None) -> BaseChatModel:
         cfg = _load_override()
 
     if cfg is not None and cfg.base_url and cfg.api_key and cfg.model:
-        # Use the override config (any provider via auto-detected protocol)
-        protocol = _detect_protocol(cfg.base_url)
-        logger.info("creating_llm", provider="user_override", protocol=protocol, url=cfg.base_url)
+        # Use the override config (protocol pinned by the user, or inferred)
+        protocol = _resolve_protocol(cfg.protocol, cfg.base_url)
+        logger.info(
+            "creating_llm",
+            provider="user_override",
+            protocol=protocol,
+            requested=cfg.protocol,
+            url=cfg.base_url,
+        )
         if protocol == "anthropic":
             return _create_chat_anthropic(
                 api_key=cfg.api_key,

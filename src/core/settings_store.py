@@ -32,16 +32,33 @@ class SettingsStore:
                 api_key TEXT DEFAULT '',
                 base_url TEXT DEFAULT '',
                 model TEXT DEFAULT '',
+                protocol TEXT DEFAULT 'auto',
                 is_active INTEGER DEFAULT 0
             );
         """)
+        self._migrate_protocol()
         self._conn.commit()
+
+    def _migrate_protocol(self) -> None:
+        """Add the ``protocol`` column to databases created before it existed.
+
+        The protocol used to be inferred from the base URL alone, which routed
+        self-hosted gateways onto the wrong SDK. Rows predating the column keep
+        that behaviour via the ``'auto'`` default; the PRAGMA guard keeps this
+        idempotent.
+        """
+        columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(llm_presets)")}
+        if "protocol" not in columns:
+            self._conn.execute(
+                "ALTER TABLE llm_presets ADD COLUMN protocol TEXT DEFAULT 'auto'"
+            )
+            logger.info("presets_protocol_column_added")
 
     # ── Presets CRUD ────────────────────────────────────────────
 
     def list_presets(self) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT id, label, base_url, model, is_active FROM llm_presets ORDER BY id"
+            "SELECT id, label, base_url, model, protocol, is_active FROM llm_presets ORDER BY id"
         ).fetchall()
         return [
             {
@@ -49,18 +66,22 @@ class SettingsStore:
                 "label": r["label"],
                 "base_url": r["base_url"],
                 "model": r["model"],
+                "protocol": r["protocol"] or "auto",
                 "is_active": bool(r["is_active"]),
             }
             for r in rows
         ]
 
-    def add_preset(self, label: str, base_url: str, api_key: str, model: str) -> int:
+    def add_preset(
+        self, label: str, base_url: str, api_key: str, model: str, protocol: str = "auto"
+    ) -> int:
         cur = self._conn.execute(
-            "INSERT INTO llm_presets (label, api_key, base_url, model, is_active) VALUES (?, ?, ?, ?, 0)",
-            (label, api_key, base_url, model),
+            "INSERT INTO llm_presets (label, api_key, base_url, model, protocol, is_active)"
+            " VALUES (?, ?, ?, ?, ?, 0)",
+            (label, api_key, base_url, model, protocol),
         )
         self._conn.commit()
-        logger.info("preset_added", label=label, model=model)
+        logger.info("preset_added", label=label, model=model, protocol=protocol)
         return cur.lastrowid
 
     def delete_preset(self, preset_id: int) -> None:
@@ -78,7 +99,7 @@ class SettingsStore:
             logger.info("preset_deactivated_all")
             return None
         row = self._conn.execute(
-            "SELECT id, label, base_url, api_key, model FROM llm_presets WHERE id = ?",
+            "SELECT id, label, base_url, api_key, model, protocol FROM llm_presets WHERE id = ?",
             (preset_id,),
         ).fetchone()
         if row:
@@ -88,19 +109,21 @@ class SettingsStore:
                 "base_url": row["base_url"],
                 "api_key": row["api_key"],
                 "model": row["model"],
+                "protocol": row["protocol"] or "auto",
             }
         return None
 
     def get_active_config(self) -> dict | None:
         """Get the active preset config (for create_llm())."""
         row = self._conn.execute(
-            "SELECT api_key, base_url, model FROM llm_presets WHERE is_active = 1"
+            "SELECT api_key, base_url, model, protocol FROM llm_presets WHERE is_active = 1"
         ).fetchone()
         if row:
             return {
                 "api_key": row["api_key"],
                 "base_url": row["base_url"],
                 "model": row["model"],
+                "protocol": row["protocol"] or "auto",
             }
         return None
 
